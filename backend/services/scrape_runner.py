@@ -12,6 +12,7 @@ returned, so a manual trigger always gets a run record back.
 
 import time
 import uuid
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,8 @@ from backend.database.models.scrape_run import ScrapeRun as ScrapeRunDB
 from backend.services.storage import BaseStorageService, LocalStorageService
 from backend.workers.pool.account_pool import AccountPool, NoAccountAvailable
 from backend.workers.scrapers.registry import get_adapter
+
+logger = logging.getLogger(__name__)
 
 
 async def run_scrape(
@@ -43,6 +46,10 @@ async def run_scrape(
 
     run = await ScrapeRunDB.create(db, tracking_config_id=tracking_config_id, status=ScrapeStatus.PENDING)
     run_id = run.id
+    logger.info(
+        "scrape run %s starting: platform=%s tracking_config=%s",
+        run_id, platform_name, tracking_config_id,
+    )
 
     # Try to check out an account. Perplexity answers unauthenticated, so an
     # empty pool is fine -- we just proceed without one.
@@ -93,11 +100,13 @@ async def run_scrape(
             scraped_at=datetime.now(timezone.utc),
         )
 
+        logger.info("scrape run %s succeeded in %dms", run_id, duration_ms)
         if account:
             await pool.release(account.id)
         return run
     except Exception as e:
         duration_ms = int((time.monotonic() - started) * 1000)
+        logger.error("scrape run %s failed in %dms: %s", run_id, duration_ms, e)
         run = await ScrapeRunDB.update(
             db,
             run_id,

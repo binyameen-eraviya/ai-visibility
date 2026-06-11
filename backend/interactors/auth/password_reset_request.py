@@ -1,3 +1,4 @@
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
@@ -8,6 +9,8 @@ from backend.service.email import email_service
 from backend.utils.schema.request import PasswordResetRequest
 from backend.utils.schema.response import PasswordResetResponse
 from backend.utils.custom_exceptions import NotFound as DataNotFoundException
+
+logger = logging.getLogger(__name__)
 
 
 async def call(db: AsyncSession, payload: PasswordResetRequest) -> PasswordResetResponse:
@@ -49,7 +52,7 @@ async def call(db: AsyncSession, payload: PasswordResetRequest) -> PasswordReset
             )
             email_sent = True
         except Exception as e:
-            print(f"Failed to send reset email to {payload.email}: {str(e)}")
+            logger.warning("Failed to send reset email to %s: %s", payload.email, e)
         
         return PasswordResetResponse(
             message="If an account with this email exists, you will receive a password reset link",

@@ -2,6 +2,7 @@ import os
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from backend.utils.logging_config import configure_logging
 from backend.routes import (
     user,
     development_testing,
@@ -15,8 +16,12 @@ from backend.routes import (
     reference,
     scrape,
     admin,
+    health,
 )
 
+
+# Configure structured logging (LOG_LEVEL from env) before the app starts.
+configure_logging()
 
 # App.
 app = FastAPI()
@@ -47,6 +52,7 @@ app.include_router(reports.router)
 app.include_router(reference.router)
 app.include_router(scrape.router)
 app.include_router(admin.router)
+app.include_router(health.router)
 
 # Run.
 if __name__ == "__main__":
