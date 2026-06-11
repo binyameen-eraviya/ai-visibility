@@ -16,6 +16,7 @@ RUN playwright install --with-deps chromium
 COPY backend /app/backend
 COPY main.py /app/main.py
 COPY alembic.ini /app/alembic.ini
+COPY pyproject.toml /app/pyproject.toml
 
 COPY ./backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

@@ -98,6 +98,10 @@ async def _check_user_exists(db: AsyncSession, email: str) -> None:
         )
     except DataNotFoundException:
         pass
+    except HTTPException:
+        # The 409 above is itself an HTTPException -- let it propagate rather
+        # than being swallowed and re-wrapped as a 500 below.
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
