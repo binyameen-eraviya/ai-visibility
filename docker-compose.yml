@@ -54,6 +54,9 @@ services:
     env_file:
       - ./backend/.env
     entrypoint: []
+    # Behind the "worker" profile: not started by a plain `docker compose up`
+    # (M2 runs scrapes synchronously in the api process). Add `--profile worker`.
+    profiles: ["worker"]
     command: celery -A backend.workers.celery_app worker --loglevel=info -Q scrape,parse,aggregate,celery
     volumes:
       - ./backend:/app/backend
@@ -74,6 +77,7 @@ services:
     env_file:
       - ./backend/.env
     entrypoint: []
+    profiles: ["worker"]
     command: celery -A backend.workers.celery_app beat --loglevel=info
     volumes:
       - ./backend:/app/backend
