@@ -1,0 +1,17 @@
+# Normalize all text files to LF in the repo and on checkout, so Linux Docker
+# builds (entrypoint.sh shebang, nginx.conf) work regardless of a contributor's
+# core.autocrlf setting on Windows.
+* text=auto eol=lf
+
+# Shell scripts MUST be LF (run inside Linux containers).
+*.sh text eol=lf
+
+# Treat common binary assets as binary (never line-ending converted).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
