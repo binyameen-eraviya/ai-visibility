@@ -27,6 +27,9 @@ class PasswordReset(BaseModel):
     token: str
     new_password: str
 
+class AnalyzeWebsiteRequest(BaseModel):
+    url: str
+
 class ProjectCreate(BaseModel):
     name: str
     website_url: Optional[str] = None
