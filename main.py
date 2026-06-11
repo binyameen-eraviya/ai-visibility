@@ -31,7 +31,9 @@ app = FastAPI()
 
 
 #Middleware for React server
-origins = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+# Explicit allow-list from env (never "*"): strip whitespace and drop empties
+# so a trailing comma / blank value can't produce a bogus "" origin.
+origins = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
