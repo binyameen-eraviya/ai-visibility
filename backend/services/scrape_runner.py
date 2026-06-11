@@ -42,9 +42,12 @@ async def run_scrape(
     pool = AccountPool(db)
 
     run = await ScrapeRunDB.create(db, tracking_config_id=tracking_config_id, status=ScrapeStatus.PENDING)
+    run_id = run.id
 
     # Try to check out an account. Perplexity answers unauthenticated, so an
     # empty pool is fine -- we just proceed without one.
+    # NOTE: pool.checkout() rolls back the session on NoAccountAvailable, which
+    # expires `run` -- capture run_id above before that can happen.
     account = None
     account_payload = None
     try:
@@ -55,7 +58,7 @@ async def run_scrape(
 
     await ScrapeRunDB.update(
         db,
-        run.id,
+        run_id,
         status=ScrapeStatus.RUNNING,
         account_id=(account.id if account else None),
     )
@@ -74,15 +77,15 @@ async def run_scrape(
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "metadata": raw.metadata,
         }
-        raw_path = await storage.save_raw(project_id, run.id, data)
+        raw_path = await storage.save_raw(project_id, run_id, data)
 
         screenshot_path = None
         if raw.screenshot:
-            screenshot_path = await storage.save_screenshot(project_id, run.id, raw.screenshot)
+            screenshot_path = await storage.save_screenshot(project_id, run_id, raw.screenshot)
 
         run = await ScrapeRunDB.update(
             db,
-            run.id,
+            run_id,
             status=ScrapeStatus.SUCCESS,
             raw_storage_path=raw_path,
             screenshot_path=screenshot_path,
@@ -97,7 +100,7 @@ async def run_scrape(
         duration_ms = int((time.monotonic() - started) * 1000)
         run = await ScrapeRunDB.update(
             db,
-            run.id,
+            run_id,
             status=ScrapeStatus.FAILED,
             error=str(e),
             duration_ms=duration_ms,

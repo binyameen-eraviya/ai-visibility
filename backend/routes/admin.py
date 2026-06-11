@@ -7,9 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database.db import get_db
 from backend.service.auth_handler import AuthHandler
 from backend.utils.schema.request import ScrapeAccountCreate
-from backend.utils.schema.response import ScrapeAccountResponse
+from backend.utils.schema.response import ScrapeAccountResponse, VerificationResponse
 from backend.interactors.admin import create_scrape_account as create_scrape_account_interactor
 from backend.interactors.admin import list_scrape_accounts as list_scrape_accounts_interactor
+from backend.interactors.admin import verify_user as verify_user_interactor
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -28,3 +29,11 @@ async def list_scrape_accounts(
     current_user = Depends(AuthHandler.get_current_super_admin),
 ):
     return await list_scrape_accounts_interactor.call(db, current_user, platform_id=platform_id)
+
+@router.post("/users/{user_id}/verify", response_model=VerificationResponse)
+async def verify_user(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(AuthHandler.get_current_super_admin),
+):
+    return await verify_user_interactor.call(db, user_id, current_user)

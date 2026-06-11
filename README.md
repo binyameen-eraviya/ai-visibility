@@ -42,6 +42,31 @@ docker compose exec api python -c "from backend.workers.tasks import ping; print
 # -> pong
 ```
 
+## Smoke test the API
+
+```bash
+# Signup (note: /api/signup, not /api/auth/signup; field is user_name, not name)
+curl -X POST http://localhost:8001/api/signup \
+  -H "Content-Type: application/json" \
+  -d '{"user_name": "Test User", "email": "test@example.com", "password": "TestPass123!", "organization_name": "Test Org"}'
+# With APP_ENV=development (default in backend/.env), the user is auto-verified
+# and can log in immediately.
+
+# Login (note: /api/login, not /api/auth/login)
+curl -X POST http://localhost:8001/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "password": "TestPass123!"}'
+# -> { "user": {...}, "access_token": "..." }
+```
+
+If `APP_ENV` is not `development` (e.g. a real deployment), new users must verify
+via the emailed link, or a `SUPER_ADMIN` can verify them manually:
+
+```bash
+curl -X POST http://localhost:8001/api/admin/users/{user_id}/verify \
+  -H "Authorization: Bearer $SUPER_ADMIN_TOKEN"
+```
+
 ## Layout additions over the boilerplate
 
 ```

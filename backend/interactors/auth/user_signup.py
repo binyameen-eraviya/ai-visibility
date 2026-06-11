@@ -1,3 +1,4 @@
+import os
 import secrets
 import re
 from fastapi import HTTPException, status
@@ -22,7 +23,20 @@ async def call(db: AsyncSession, payload: UserSignup) -> SignupResponse:
         
         organization = await _create_organization(db, payload)
         created_user, signup_token = await _create_user(db, payload, organization.id)
-        
+
+        # Dev convenience: skip email verification entirely so a freshly
+        # signed-up user can log in immediately. Never bypasses verification
+        # outside APP_ENV=development.
+        if os.getenv("APP_ENV") == "development":
+            created_user = await UserDB.verify(db, created_user.id)
+            return _create_signup_response(
+                created_user,
+                organization.id,
+                email_sent=False,
+                verification_required=False,
+                next_step="Account auto-verified (APP_ENV=development). You can log in now.",
+            )
+
         email_sent = _send_verification_email(payload.email, payload.user_name, signup_token)
         return _create_signup_response(created_user, organization.id, email_sent)
         
@@ -132,7 +146,13 @@ def _send_verification_email(email: str, name: str, token: str) -> bool:
         return False
 
 
-def _create_signup_response(user, organization_id: str, email_sent: bool) -> SignupResponse:
+def _create_signup_response(
+    user,
+    organization_id: str,
+    email_sent: bool,
+    verification_required: bool = True,
+    next_step: str = None,
+) -> SignupResponse:
     """Create the signup response object."""
     user_response = UserResponse(
         id=user.id,
@@ -141,12 +161,15 @@ def _create_signup_response(user, organization_id: str, email_sent: bool) -> Sig
         role=user.role,
         verified_at=user.verified_at
     )
-    
+
+    if next_step is None:
+        next_step = "Please check your email for verification instructions" if email_sent else "Please contact support for verification"
+
     return SignupResponse(
         message="User registered successfully",
         user=user_response,
         organization_id=organization_id,
         email_sent=email_sent,
-        verification_required=True,
-        next_step="Please check your email for verification instructions" if email_sent else "Please contact support for verification"
+        verification_required=verification_required,
+        next_step=next_step,
     )

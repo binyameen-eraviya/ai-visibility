@@ -93,6 +93,25 @@ class User:
             await db.rollback()
             raise Exception(f"Error creating user: {str(e)}")
 
+    async def verify(db: AsyncSession, user_id: uuid.UUID):
+        """Mark a user as verified, bypassing the email/token flow."""
+        try:
+            stmt = select(UserTable).where(UserTable.id == user_id)
+            result = await db.execute(stmt)
+            user = result.scalars().first()
+            if not user:
+                raise DataNotFoundException("User not found")
+
+            user.verified_at = datetime.now(timezone.utc)
+            await db.commit()
+            await db.refresh(user)
+            return user
+        except DataNotFoundException:
+            raise
+        except Exception as e:
+            await db.rollback()
+            raise Exception(f"Error verifying user: {str(e)}")
+
     async def signup_verify_by_token(db: AsyncSession, email: str, token: str):
         try:
             stmt = select(UserTable).where(
