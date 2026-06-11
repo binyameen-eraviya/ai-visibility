@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import api, { TOKEN_STORAGE_KEY } from "../config/api";
 
+const USER_STORAGE_KEY = "aiscope_user";
+
 interface User {
   id: string;
   name: string;
@@ -34,6 +36,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (email, password) => {
     const { data } = await api.post("/api/login", { email, password });
     localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
     set({ user: data.user, token: data.access_token, isAuthenticated: true });
   },
 
@@ -44,11 +47,13 @@ export const useAuthStore = create<AuthState>((set) => ({
       password: userData.password,
     });
     localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
     set({ user: data.user, token: data.access_token, isAuthenticated: true });
   },
 
   logout: () => {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(USER_STORAGE_KEY);
     set({ user: null, token: null, isAuthenticated: false });
     window.location.href = "/login";
   },
@@ -56,7 +61,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   loadFromStorage: () => {
     const token = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (token) {
-      set({ token, isAuthenticated: true });
+      let user: User | null = null;
+      const stored = localStorage.getItem(USER_STORAGE_KEY);
+      if (stored) {
+        try {
+          user = JSON.parse(stored) as User;
+        } catch {
+          user = null;
+        }
+      }
+      set({ token, user, isAuthenticated: true });
     }
   },
 }));
