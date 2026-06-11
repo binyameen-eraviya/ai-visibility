@@ -66,6 +66,13 @@ storage/
 **/postgres_data/
 **/redis_data/
 
+# ───────────────────────── Claude Code ─────────────────────
+# CLAUDE.md and .claude/settings.json are shared project config and ARE
+# committed. Only ignore local-machine settings/credentials.
+# Claude Code local settings
+.claude/settings.local.json
+.claude/credentials.json
+
 # ───────────────────────── IDE / Editor ───────────────────
 .vscode/*
 !.vscode/extensions.json
