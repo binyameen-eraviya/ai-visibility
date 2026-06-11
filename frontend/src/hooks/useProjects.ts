@@ -15,6 +15,11 @@ export interface ProjectCreatePayload {
   website_url?: string;
 }
 
+export interface ProjectUpdatePayload {
+  name?: string;
+  website_url?: string;
+}
+
 export function useProjects() {
   return useQuery<Project[]>({
     queryKey: ["projects"],
@@ -45,6 +50,20 @@ export function useCreateProject() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useUpdateProject(id?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: ProjectUpdatePayload) => {
+      const { data } = await api.put(`/api/projects/${id}`, payload);
+      return data as Project;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["projects", id] });
     },
   });
 }

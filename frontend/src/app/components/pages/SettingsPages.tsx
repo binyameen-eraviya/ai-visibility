@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { Plus, X, Trash2, Building2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, X, Trash2, Building2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useProjectStore } from "../../../store/projectStore";
+import { useAuthStore } from "../../../store/authStore";
+import { useProject, useUpdateProject } from "../../../hooks/useProjects";
 import { useBrands, useCreateBrand, useDeleteBrand } from "../../../hooks/useBrands";
 import {
   usePlatforms,
@@ -34,24 +36,48 @@ function SectionCard({ title, children }: { title: string; children: React.React
   );
 }
 
-function SaveButton({ onClick }: { onClick?: () => void }) {
+function SaveButton({
+  onClick, disabled, label = "Save Changes",
+}: { onClick?: () => void; disabled?: boolean; label?: string }) {
   return (
     <button
       onClick={onClick}
-      className="px-5 py-2.5 rounded-xl transition-colors mt-4"
+      disabled={disabled}
+      className="px-5 py-2.5 rounded-xl transition-colors mt-4 disabled:opacity-60"
       style={{ background: "#0a0a0a", color: "#fff", fontSize: 14, fontWeight: 600 }}
       onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#1f1f1f")}
       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "#0a0a0a")}
     >
-      Save Changes
+      {label}
     </button>
   );
 }
 
 export function ProjectSettingsPage() {
-  const [name, setName] = useState("Acme Corp AI Visibility");
-  const [url, setUrl] = useState("https://acmecorp.com");
+  const activeProjectId = useProjectStore((s) => s.activeProjectId) ?? undefined;
+  const { data: project, isLoading } = useProject(activeProjectId);
+  const updateProject = useUpdateProject(activeProjectId);
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // Hydrate the form once the project loads.
+  useEffect(() => {
+    if (project) {
+      setName(project.name);
+      setUrl(project.website_url ?? "");
+    }
+  }, [project]);
+
+  const handleSave = async () => {
+    if (!activeProjectId) return;
+    try {
+      await updateProject.mutateAsync({ name, website_url: url || undefined });
+      toast.success("Project updated");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Failed to update project");
+    }
+  };
 
   return (
     <div style={{ fontFamily: "Inter, sans-serif" }} className="max-w-2xl space-y-6">
@@ -61,17 +87,23 @@ export function ProjectSettingsPage() {
       </div>
 
       <SectionCard title="General">
-        <div className="space-y-4">
-          <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Project Name</label>
-            <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
+        {isLoading ? (
+          <div className="space-y-3">{[0, 1].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+        ) : !activeProjectId ? (
+          <p style={{ fontSize: 14, color: "#9a9a9a" }}>Select a project to edit its settings.</p>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Project Name</label>
+              <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Website URL</label>
+              <input style={inputStyle} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" />
+            </div>
+            <SaveButton onClick={handleSave} disabled={updateProject.isPending || !name.trim()} label={updateProject.isPending ? "Saving..." : "Save Changes"} />
           </div>
-          <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Website URL</label>
-            <input style={inputStyle} value={url} onChange={(e) => setUrl(e.target.value)} />
-          </div>
-          <SaveButton />
-        </div>
+        )}
       </SectionCard>
 
       <SectionCard title="Danger Zone">
