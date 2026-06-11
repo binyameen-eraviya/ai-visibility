@@ -135,7 +135,7 @@ def _coerce(data: dict, fallback: BrandSuggestions) -> BrandSuggestions:
 class GeminiLLMService(BaseLLMService):
     def __init__(self, api_key: str = None, model: str = None):
         self.api_key = api_key if api_key is not None else os.getenv("LLM_API_KEY", "")
-        self.model = model or os.getenv("LLM_MODEL", "gemini-1.5-flash")
+        self.model = model or os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
     async def analyze_brand(self, website_data: WebsiteAnalysis) -> BrandSuggestions:
         fallback = _fallback(website_data)
@@ -151,12 +151,22 @@ class GeminiLLMService(BaseLLMService):
         }
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(url, params={"key": self.api_key}, json=payload)
+                # Auth via header (not a ?key= query param) so the key never
+                # lands in a URL -- and so it can't leak through error/log text.
+                resp = await client.post(
+                    url,
+                    headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+                    json=payload,
+                )
                 resp.raise_for_status()
                 body = resp.json()
             text = body["candidates"][0]["content"]["parts"][0]["text"]
             data = _parse_json(text)
             return _coerce(data, fallback)
+        except httpx.HTTPStatusError as e:
+            # Log the status only -- never str(e), which contains the request URL.
+            logger.warning("llm_service: brand analysis failed (HTTP %s), using fallback", e.response.status_code)
+            return fallback
         except Exception as e:
-            logger.warning("llm_service: brand analysis failed, using fallback: %s", e)
+            logger.warning("llm_service: brand analysis failed (%s), using fallback", type(e).__name__)
             return fallback
