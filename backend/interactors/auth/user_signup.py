@@ -1,6 +1,7 @@
 import os
 import secrets
 import re
+import logging
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,8 @@ from backend.utils.schema.request import UserSignup
 from backend.utils.schema.response import SignupResponse, UserResponse
 from backend.utils.custom_exceptions import NotFound as DataNotFoundException
 from backend.utils.enums import UserRole
+
+logger = logging.getLogger(__name__)
 
 
 async def call(db: AsyncSession, payload: UserSignup) -> SignupResponse:
@@ -146,7 +149,7 @@ def _send_verification_email(email: str, name: str, token: str) -> bool:
         )
         return True
     except Exception as e:
-        print(f"Failed to send verification email to {email}: {str(e)}")
+        logger.warning("Failed to send verification email to %s: %s", email, e)
         return False
 
 

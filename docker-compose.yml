@@ -45,6 +45,14 @@ services:
         condition: service_healthy
     ports:
       - "${PORT_BACKEND}:8000"
+    healthcheck:
+      # Hits the /health endpoint; urlopen raises (non-zero exit) on a 503,
+      # marking the container unhealthy when the DB or Redis is unreachable.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   worker:
     build:
