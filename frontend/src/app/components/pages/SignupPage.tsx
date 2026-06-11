@@ -3,6 +3,37 @@ import { useNavigate } from "react-router";
 import { Zap } from "lucide-react";
 import { useAuthStore } from "../../../store/authStore";
 
+// Defined at module scope (NOT inside SignupPage). A component defined inside
+// the render function gets a new identity on every render, which makes React
+// unmount/remount the <input> on each keystroke and drop focus.
+function Field({
+  label, type = "text", placeholder, value, onChange,
+}: {
+  label: string;
+  type?: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-4 py-2.5 rounded-xl outline-none transition-all"
+        style={{ background: "#fffaf0", border: "1px solid #e5e5e5", fontSize: 14, color: "#0a0a0a" }}
+        onFocus={(e) => (e.target.style.borderColor = "#1a3a3a")}
+        onBlur={(e) => (e.target.style.borderColor = "#e5e5e5")}
+      />
+    </div>
+  );
+}
+
 export function SignupPage() {
   const navigate = useNavigate();
   const signup = useAuthStore((s) => s.signup);
@@ -38,26 +69,6 @@ export function SignupPage() {
     }
   };
 
-  const Field = ({
-    label, name, type = "text", placeholder,
-  }: { label: string; name: string; type?: string; placeholder: string }) => (
-    <div>
-      <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>
-        {label}
-      </label>
-      <input
-        type={type}
-        value={(form as any)[name]}
-        onChange={(e) => setForm({ ...form, [name]: e.target.value })}
-        placeholder={placeholder}
-        className="w-full px-4 py-2.5 rounded-xl outline-none transition-all"
-        style={{ background: "#fffaf0", border: "1px solid #e5e5e5", fontSize: 14, color: "#0a0a0a" }}
-        onFocus={(e) => (e.target.style.borderColor = "#1a3a3a")}
-        onBlur={(e) => (e.target.style.borderColor = "#e5e5e5")}
-      />
-    </div>
-  );
-
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4"
@@ -84,11 +95,11 @@ export function SignupPage() {
                 {error}
               </div>
             )}
-            <Field label="Your name" name="name" placeholder="Alex Kim" />
-            <Field label="Work email" name="email" type="email" placeholder="alex@acmecorp.com" />
-            <Field label="Organization name" name="org" placeholder="Acme Corp" />
-            <Field label="Password" name="password" type="password" placeholder="••••••••" />
-            <Field label="Confirm password" name="confirm" type="password" placeholder="••••••••" />
+            <Field label="Your name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Alex Kim" />
+            <Field label="Work email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} placeholder="alex@acmecorp.com" />
+            <Field label="Organization name" value={form.org} onChange={(v) => setForm({ ...form, org: v })} placeholder="Acme Corp" />
+            <Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} placeholder="••••••••" />
+            <Field label="Confirm password" type="password" value={form.confirm} onChange={(v) => setForm({ ...form, confirm: v })} placeholder="••••••••" />
 
             <button
               type="submit"
