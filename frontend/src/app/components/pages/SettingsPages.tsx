@@ -570,15 +570,7 @@ export function AccountSettingsPage() {
   );
 }
 
-const MEMBERS = [
-  { id: 1, name: "Alex Kim", email: "alex@acmecorp.com", role: "Admin", joined: "Jan 12, 2026" },
-  { id: 2, name: "Jordan Lee", email: "jordan@acmecorp.com", role: "Member", joined: "Feb 3, 2026" },
-  { id: 3, name: "Sam Rivera", email: "sam@acmecorp.com", role: "Member", joined: "Mar 18, 2026" },
-];
-
 export function OrgSettingsPage() {
-  const [members, setMembers] = useState(MEMBERS);
-
   return (
     <div style={{ fontFamily: "Inter, sans-serif" }} className="max-w-3xl space-y-6">
       <div>
@@ -586,56 +578,11 @@ export function OrgSettingsPage() {
         <p style={{ fontSize: 14, color: "#6a6a6a", marginTop: 2 }}>Manage your organization and team</p>
       </div>
 
-      <SectionCard title="Organization">
-        <div className="space-y-4">
-          <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Organization Name</label>
-            <input style={inputStyle} defaultValue="Acme Corp" />
-          </div>
-          <SaveButton />
-        </div>
-      </SectionCard>
-
       <SectionCard title="Team Members">
-        <div className="flex justify-end mb-4">
-          <button
-            className="flex items-center gap-2 px-4 py-2 rounded-xl"
-            style={{ background: "#0a0a0a", color: "#fff", fontSize: 13, fontWeight: 600 }}
-          >
-            <Plus size={14} />
-            Invite Member
-          </button>
-        </div>
-        <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
-          <div className="grid px-4 py-3" style={{ gridTemplateColumns: "1fr 1fr 100px 100px 40px", borderBottom: "1px solid #e5e5e5" }}>
-            {["Name", "Email", "Role", "Joined", ""].map((h, i) => (
-              <span key={i} style={{ fontSize: 11, fontWeight: 600, color: "#9a9a9a", letterSpacing: "0.5px", textTransform: "uppercase" }}>{h}</span>
-            ))}
-          </div>
-          {members.map((m) => (
-            <div key={m.id} className="grid px-4 py-3 items-center" style={{ gridTemplateColumns: "1fr 1fr 100px 100px 40px", borderBottom: "1px solid #e5e5e5" }}>
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: "#1a3a3a", color: "#fff", fontSize: 10, fontWeight: 700 }}>
-                  {m.name.split(" ").map((n) => n.charAt(0)).join("")}
-                </div>
-                <span style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a" }}>{m.name}</span>
-              </div>
-              <span style={{ fontSize: 13, color: "#6a6a6a" }}>{m.email}</span>
-              <select
-                defaultValue={m.role}
-                className="outline-none rounded-lg px-2 py-1"
-                style={{ background: "#fffaf0", border: "1px solid #e5e5e5", fontSize: 12, color: "#0a0a0a", fontFamily: "Inter, sans-serif" }}
-              >
-                <option>Admin</option>
-                <option>Member</option>
-                <option>Viewer</option>
-              </select>
-              <span style={{ fontSize: 12, color: "#9a9a9a" }}>{m.joined}</span>
-              <button style={{ color: "#d4cfc0" }} title="Remove">
-                <X size={14} />
-              </button>
-            </div>
-          ))}
+        <div className="flex flex-col items-center py-12 gap-3">
+          <Users size={32} style={{ color: "#d4cfc0" }} />
+          <p style={{ fontSize: 14, color: "#9a9a9a" }}>Team management coming soon</p>
+          <p style={{ fontSize: 12, color: "#b4b0a0" }}>Invite teammates and manage roles in a future update.</p>
         </div>
       </SectionCard>
     </div>
