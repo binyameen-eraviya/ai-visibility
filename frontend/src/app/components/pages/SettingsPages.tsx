@@ -525,6 +525,15 @@ export function TrackingPage() {
 }
 
 export function AccountSettingsPage() {
+  const user = useAuthStore((s) => s.user);
+  const initials =
+    (user?.name ?? "")
+      .split(" ")
+      .map((p) => p.charAt(0))
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "?";
+
   return (
     <div style={{ fontFamily: "Inter, sans-serif" }} className="max-w-2xl space-y-6">
       <div>
@@ -536,41 +545,26 @@ export function AccountSettingsPage() {
         <div className="space-y-4">
           <div className="flex items-center gap-4 mb-6">
             <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "#1a3a3a", color: "#fff", fontSize: 22, fontWeight: 600 }}>
-              AK
+              {initials}
             </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "#0a0a0a" }}>Alex Kim</div>
-              <div style={{ fontSize: 13, color: "#6a6a6a" }}>Marketing Lead</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#0a0a0a" }}>{user?.name ?? "—"}</div>
+              <div style={{ fontSize: 13, color: "#6a6a6a", textTransform: "capitalize" }}>{user?.role?.toLowerCase() ?? ""}</div>
             </div>
           </div>
           <div>
             <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Full Name</label>
-            <input style={inputStyle} defaultValue="Alex Kim" />
+            <input style={{ ...inputStyle, color: "#9a9a9a" }} value={user?.name ?? ""} readOnly />
           </div>
           <div>
             <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Email</label>
-            <input style={{ ...inputStyle, color: "#9a9a9a" }} defaultValue="alex@acmecorp.com" readOnly />
+            <input style={{ ...inputStyle, color: "#9a9a9a" }} value={user?.email ?? ""} readOnly />
           </div>
-          <SaveButton />
         </div>
       </SectionCard>
 
       <SectionCard title="Change Password">
-        <div className="space-y-4">
-          <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Current Password</label>
-            <input style={inputStyle} type="password" placeholder="••••••••" />
-          </div>
-          <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>New Password</label>
-            <input style={inputStyle} type="password" placeholder="••••••••" />
-          </div>
-          <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Confirm New Password</label>
-            <input style={inputStyle} type="password" placeholder="••••••••" />
-          </div>
-          <SaveButton />
-        </div>
+        <p style={{ fontSize: 14, color: "#9a9a9a" }}>Password change coming soon.</p>
       </SectionCard>
     </div>
   );
