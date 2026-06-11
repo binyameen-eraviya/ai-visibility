@@ -1,14 +1,41 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Zap } from "lucide-react";
+import { useAuthStore } from "../../../store/authStore";
 
 export function SignupPage() {
   const navigate = useNavigate();
+  const signup = useAuthStore((s) => s.signup);
   const [form, setForm] = useState({ name: "", email: "", org: "", password: "", confirm: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    navigate("/onboarding");
+    setError("");
+
+    if (form.password !== form.confirm) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await signup({
+        user_name: form.name,
+        email: form.email,
+        password: form.password,
+        organization_name: form.org,
+      });
+      navigate("/onboarding");
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.detail ||
+          "Unable to create your account. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const Field = ({
@@ -49,6 +76,14 @@ export function SignupPage() {
           <p style={{ fontSize: 14, color: "#6a6a6a", marginBottom: 24 }}>Start tracking your AI visibility today.</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div
+                className="rounded-xl px-4 py-2.5"
+                style={{ background: "#fdecec", border: "1px solid #f5b5b5", fontSize: 13, color: "#b42318" }}
+              >
+                {error}
+              </div>
+            )}
             <Field label="Your name" name="name" placeholder="Alex Kim" />
             <Field label="Work email" name="email" type="email" placeholder="alex@acmecorp.com" />
             <Field label="Organization name" name="org" placeholder="Acme Corp" />
@@ -57,12 +92,13 @@ export function SignupPage() {
 
             <button
               type="submit"
-              className="w-full py-3 rounded-xl transition-colors mt-2"
+              disabled={loading}
+              className="w-full py-3 rounded-xl transition-colors mt-2 disabled:opacity-60"
               style={{ background: "#0a0a0a", color: "#fff", fontSize: 14, fontWeight: 600 }}
               onMouseEnter={(e) => ((e.target as HTMLElement).style.background = "#1f1f1f")}
               onMouseLeave={(e) => ((e.target as HTMLElement).style.background = "#0a0a0a")}
             >
-              Create account
+              {loading ? "Creating account..." : "Create account"}
             </button>
           </form>
 

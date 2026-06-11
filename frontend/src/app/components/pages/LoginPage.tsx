@@ -1,16 +1,32 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Zap, Eye, EyeOff } from "lucide-react";
+import { useAuthStore } from "../../../store/authStore";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const login = useAuthStore((s) => s.login);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    navigate("/dashboard");
+    setError("");
+    setLoading(true);
+    try {
+      await login(email, password);
+      navigate("/dashboard");
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.detail ||
+          "Unable to sign in. Please check your credentials and try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -48,6 +64,14 @@ export function LoginPage() {
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div
+                className="rounded-xl px-4 py-2.5"
+                style={{ background: "#fdecec", border: "1px solid #f5b5b5", fontSize: 13, color: "#b42318" }}
+              >
+                {error}
+              </div>
+            )}
             <div>
               <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>
                 Email
@@ -113,12 +137,13 @@ export function LoginPage() {
 
             <button
               type="submit"
-              className="w-full py-3 rounded-xl transition-colors"
+              disabled={loading}
+              className="w-full py-3 rounded-xl transition-colors disabled:opacity-60"
               style={{ background: "#0a0a0a", color: "#fff", fontSize: 14, fontWeight: 600 }}
               onMouseEnter={(e) => ((e.target as HTMLElement).style.background = "#1f1f1f")}
               onMouseLeave={(e) => ((e.target as HTMLElement).style.background = "#0a0a0a")}
             >
-              Sign in
+              {loading ? "Signing in..." : "Sign in"}
             </button>
           </form>
 

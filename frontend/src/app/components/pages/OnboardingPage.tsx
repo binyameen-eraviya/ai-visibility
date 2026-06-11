@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Check, X, ChevronRight, Zap } from "lucide-react";
+import { toast } from "sonner";
+import { useCreateProject } from "../../../hooks/useProjects";
+import { useProjectStore } from "../../../store/projectStore";
+import api from "../../../config/api";
 
 const PLATFORMS = [
   { id: "chatgpt", label: "ChatGPT", color: "#ff4d8b" },
@@ -14,6 +18,8 @@ const STEPS = ["Create Project", "Add Your Brand", "Add Competitors", "Configure
 
 export function OnboardingPage() {
   const navigate = useNavigate();
+  const setActiveProjectId = useProjectStore((s) => s.setActiveProjectId);
+  const createProject = useCreateProject();
   const [step, setStep] = useState(0);
   const [projectName, setProjectName] = useState("");
   const [website, setWebsite] = useState("");
@@ -22,6 +28,8 @@ export function OnboardingPage() {
   const [competitors, setCompetitors] = useState<string[]>(["Rival AI", "CompeteBot"]);
   const [newComp, setNewComp] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["chatgpt", "perplexity"]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   const inputStyle = {
     width: "100%",
@@ -225,26 +233,83 @@ export function OnboardingPage() {
           </div>
         )}
 
+        {/* Error */}
+        {error && (
+          <div
+            className="rounded-xl px-4 py-2.5 mt-4"
+            style={{ background: "#fdecec", border: "1px solid #f5b5b5", fontSize: 13, color: "#b42318" }}
+          >
+            {error}
+          </div>
+        )}
+
         {/* Footer buttons */}
         <div className="flex gap-3 mt-8">
           {step > 0 && (
             <button
               onClick={() => setStep(step - 1)}
-              className="flex-1 py-2.5 rounded-xl transition-colors"
+              disabled={submitting}
+              className="flex-1 py-2.5 rounded-xl transition-colors disabled:opacity-60"
               style={{ background: "#fffaf0", border: "1px solid #e5e5e5", fontSize: 14, fontWeight: 500, color: "#0a0a0a" }}
             >
               Back
             </button>
           )}
           <button
-            onClick={() => step < 3 ? setStep(step + 1) : navigate("/dashboard")}
-            className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors"
+            onClick={async () => {
+              if (step < 3) {
+                setStep(step + 1);
+                return;
+              }
+
+              setError("");
+              setSubmitting(true);
+              try {
+                const project = await createProject.mutateAsync({
+                  name: projectName,
+                  website_url: website || undefined,
+                });
+
+                if (brandName.trim()) {
+                  await api.post(`/api/projects/${project.id}/brands`, {
+                    name: brandName.trim(),
+                    aliases: aliases
+                      .split(",")
+                      .map((a) => a.trim())
+                      .filter(Boolean),
+                    is_primary: true,
+                  });
+                }
+
+                for (const competitor of competitors) {
+                  await api.post(`/api/projects/${project.id}/brands`, {
+                    name: competitor,
+                    aliases: [],
+                    is_primary: false,
+                  });
+                }
+
+                setActiveProjectId(project.id);
+                toast.success("Project created. Add prompts in Settings to start tracking.");
+                navigate("/dashboard");
+              } catch (err: any) {
+                setError(
+                  err?.response?.data?.detail || "Something went wrong while setting up your project."
+                );
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+            disabled={submitting || (step === 0 && !projectName.trim())}
+            className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
             style={{ background: "#0a0a0a", color: "#fff", fontSize: 14, fontWeight: 600 }}
             onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "#1f1f1f")}
             onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "#0a0a0a")}
           >
             {step < 3 ? (
               <>Continue <ChevronRight size={16} /></>
+            ) : submitting ? (
+              "Setting up..."
             ) : (
               "Start Tracking"
             )}

@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { Plus, Search, Filter, ChevronDown, X, MessageSquare } from "lucide-react";
+import { Plus, Search, X, MessageSquare } from "lucide-react";
+import { toast } from "sonner";
+import { useProjectStore } from "../../../store/projectStore";
+import { usePrompts, useCreatePrompt, useTopics } from "../../../hooks/usePrompts";
+import { Skeleton } from "../ui/skeleton";
 
 const PLATFORM_COLORS: Record<string, string> = {
   ChatGPT: "#ff4d8b",
@@ -9,69 +13,28 @@ const PLATFORM_COLORS: Record<string, string> = {
   Copilot: "#ff6b5a",
 };
 
-const PROMPTS = [
-  {
-    id: 1,
-    text: "What's the best AI analytics tool for marketing teams?",
-    topic: "Product Discovery",
-    tags: ["analytics", "marketing"],
-    status: "Active",
-    platforms: { ChatGPT: 68, Perplexity: 82, Gemini: 55, "AI Overviews": 40, Copilot: 61 },
-  },
-  {
-    id: 2,
-    text: "Compare AI visibility tracking platforms",
-    topic: "Competitive Research",
-    tags: ["comparison", "AI tracking"],
-    status: "Active",
-    platforms: { ChatGPT: 45, Perplexity: 71, Gemini: 38, "AI Overviews": 29, Copilot: 52 },
-  },
-  {
-    id: 3,
-    text: "How do I track brand mentions in ChatGPT?",
-    topic: "Use Cases",
-    tags: ["brand monitoring", "ChatGPT"],
-    status: "Active",
-    platforms: { ChatGPT: 89, Perplexity: 64, Gemini: 72, "AI Overviews": 55, Copilot: 67 },
-  },
-  {
-    id: 4,
-    text: "Best tools for AI answer engine optimization",
-    topic: "Product Discovery",
-    tags: ["AEO", "optimization"],
-    status: "Active",
-    platforms: { ChatGPT: 34, Perplexity: 58, Gemini: 29, "AI Overviews": 62, Copilot: 41 },
-  },
-  {
-    id: 5,
-    text: "What is AI visibility tracking?",
-    topic: "Education",
-    tags: ["educational", "intro"],
-    status: "Active",
-    platforms: { ChatGPT: 72, Perplexity: 88, Gemini: 65, "AI Overviews": 48, Copilot: 59 },
-  },
-  {
-    id: 6,
-    text: "How do marketing teams measure AI search presence?",
-    topic: "Use Cases",
-    tags: ["marketing", "measurement"],
-    status: "Paused",
-    platforms: { ChatGPT: 0, Perplexity: 0, Gemini: 0, "AI Overviews": 0, Copilot: 0 },
-  },
-  {
-    id: 7,
-    text: "Which brands appear most in Perplexity answers for martech?",
-    topic: "Competitive Research",
-    tags: ["martech", "Perplexity"],
-    status: "Active",
-    platforms: { ChatGPT: 52, Perplexity: 94, Gemini: 43, "AI Overviews": 31, Copilot: 48 },
-  },
-];
+const STATUSES = ["All Status", "active", "paused", "archived"];
 
-const TOPICS = ["All Topics", "Product Discovery", "Competitive Research", "Use Cases", "Education"];
-const STATUSES = ["All Status", "Active", "Paused", "Archived"];
+function AddPromptModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const [text, setText] = useState("");
+  const [topicId, setTopicId] = useState("");
+  const { data: topics = [] } = useTopics(projectId);
+  const createPrompt = useCreatePrompt(projectId);
 
-function AddPromptModal({ onClose }: { onClose: () => void }) {
+  const handleSave = async () => {
+    if (!text.trim()) return;
+    try {
+      await createPrompt.mutateAsync({
+        text: text.trim(),
+        topic_id: topicId || undefined,
+      });
+      toast.success("Prompt added");
+      onClose();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Failed to add prompt");
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -92,45 +55,38 @@ function AddPromptModal({ onClose }: { onClose: () => void }) {
             <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Prompt text</label>
             <textarea
               rows={3}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
               className="w-full px-4 py-3 rounded-xl outline-none resize-none"
               style={{ background: "#f5f0e0", border: "1px solid #e5e5e5", fontSize: 14, color: "#0a0a0a", fontFamily: "Inter, sans-serif" }}
               placeholder="What would your customers ask an AI chatbot?"
             />
           </div>
-          <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Topic</label>
-            <select
-              className="w-full px-4 py-2.5 rounded-xl outline-none"
-              style={{ background: "#f5f0e0", border: "1px solid #e5e5e5", fontSize: 14, color: "#0a0a0a", fontFamily: "Inter, sans-serif" }}
-            >
-              {TOPICS.slice(1).map((t) => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Tags</label>
-            <input
-              className="w-full px-4 py-2.5 rounded-xl outline-none"
-              style={{ background: "#f5f0e0", border: "1px solid #e5e5e5", fontSize: 14, color: "#0a0a0a" }}
-              placeholder="analytics, marketing, comparison"
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 8 }}>Platforms</label>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(PLATFORM_COLORS).map(([p, c]) => (
-                <label key={p} className="flex items-center gap-1.5 cursor-pointer">
-                  <input type="checkbox" defaultChecked className="accent-[#1a3a3a]" />
-                  <span style={{ fontSize: 13, color: "#0a0a0a" }}>{p}</span>
-                </label>
-              ))}
+          {topics.length > 0 && (
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a", display: "block", marginBottom: 6 }}>Topic</label>
+              <select
+                value={topicId}
+                onChange={(e) => setTopicId(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl outline-none"
+                style={{ background: "#f5f0e0", border: "1px solid #e5e5e5", fontSize: 14, color: "#0a0a0a", fontFamily: "Inter, sans-serif" }}
+              >
+                <option value="">No topic</option>
+                {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
             </div>
-          </div>
+          )}
           <div className="flex gap-3 pt-2">
             <button onClick={onClose} className="flex-1 py-2.5 rounded-xl" style={{ background: "#f5f0e0", border: "1px solid #e5e5e5", fontSize: 14, fontWeight: 500, color: "#0a0a0a" }}>
               Cancel
             </button>
-            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl" style={{ background: "#0a0a0a", color: "#fff", fontSize: 14, fontWeight: 600 }}>
-              Save Prompt
+            <button
+              onClick={handleSave}
+              disabled={createPrompt.isPending || !text.trim()}
+              className="flex-1 py-2.5 rounded-xl disabled:opacity-60"
+              style={{ background: "#0a0a0a", color: "#fff", fontSize: 14, fontWeight: 600 }}
+            >
+              {createPrompt.isPending ? "Saving..." : "Save Prompt"}
             </button>
           </div>
         </div>
@@ -140,22 +96,24 @@ function AddPromptModal({ onClose }: { onClose: () => void }) {
 }
 
 export function PromptsPage() {
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const { data: prompts = [], isLoading } = usePrompts(activeProjectId ?? undefined);
   const [search, setSearch] = useState("");
-  const [topic, setTopic] = useState("All Topics");
   const [status, setStatus] = useState("All Status");
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
 
-  const filtered = PROMPTS.filter((p) => {
+  const filtered = prompts.filter((p) => {
     if (search && !p.text.toLowerCase().includes(search.toLowerCase())) return false;
-    if (topic !== "All Topics" && p.topic !== topic) return false;
     if (status !== "All Status" && p.status !== status) return false;
     return true;
   });
 
   return (
     <div style={{ fontFamily: "Inter, sans-serif" }}>
-      {showModal && <AddPromptModal onClose={() => setShowModal(false)} />}
+      {showModal && activeProjectId && (
+        <AddPromptModal projectId={activeProjectId} onClose={() => setShowModal(false)} />
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -165,7 +123,8 @@ export function PromptsPage() {
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
+          disabled={!activeProjectId}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl disabled:opacity-60"
           style={{ background: "#0a0a0a", color: "#fff", fontSize: 14, fontWeight: 600 }}
         >
           <Plus size={16} />
@@ -186,20 +145,12 @@ export function PromptsPage() {
           />
         </div>
         <select
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          className="px-3 py-2 rounded-xl outline-none"
-          style={{ background: "#f5f0e0", border: "1px solid #e5e5e5", fontSize: 13, color: "#0a0a0a", fontFamily: "Inter, sans-serif" }}
-        >
-          {TOPICS.map((t) => <option key={t}>{t}</option>)}
-        </select>
-        <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
           className="px-3 py-2 rounded-xl outline-none"
           style={{ background: "#f5f0e0", border: "1px solid #e5e5e5", fontSize: 13, color: "#0a0a0a", fontFamily: "Inter, sans-serif" }}
         >
-          {STATUSES.map((s) => <option key={s}>{s}</option>)}
+          {STATUSES.map((s) => <option key={s} value={s}>{s === "All Status" ? s : s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
         </select>
       </div>
 
@@ -215,13 +166,23 @@ export function PromptsPage() {
           ))}
         </div>
 
-        {filtered.length === 0 && (
+        {isLoading && (
+          <div className="p-4 space-y-3">
+            {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}
+          </div>
+        )}
+
+        {!isLoading && filtered.length === 0 && (
           <div className="flex flex-col items-center py-16 gap-3">
             <MessageSquare size={32} style={{ color: "#d4cfc0" }} />
-            <p style={{ fontSize: 14, color: "#9a9a9a" }}>No prompts match your filters</p>
-            <button onClick={() => setShowModal(true)} className="px-4 py-2 rounded-xl text-sm font-medium" style={{ background: "#0a0a0a", color: "#fff" }}>
-              Add your first prompt
-            </button>
+            <p style={{ fontSize: 14, color: "#9a9a9a" }}>
+              {prompts.length === 0 ? "No prompts yet" : "No prompts match your filters"}
+            </p>
+            {activeProjectId && (
+              <button onClick={() => setShowModal(true)} className="px-4 py-2 rounded-xl text-sm font-medium" style={{ background: "#0a0a0a", color: "#fff" }}>
+                Add your first prompt
+              </button>
+            )}
           </div>
         )}
 
@@ -236,32 +197,30 @@ export function PromptsPage() {
                 <p style={{ fontSize: 13, color: "#0a0a0a" }} className="line-clamp-1">{p.text}</p>
                 <div className="flex gap-1 mt-1 flex-wrap">
                   {p.tags.map((t) => (
-                    <span key={t} className="px-2 py-0.5 rounded-full" style={{ fontSize: 10, background: "#fffaf0", color: "#6a6a6a", border: "1px solid #e5e5e5" }}>
-                      {t}
+                    <span key={t.id} className="px-2 py-0.5 rounded-full" style={{ fontSize: 10, background: "#fffaf0", color: "#6a6a6a", border: "1px solid #e5e5e5" }}>
+                      {t.name}
                     </span>
                   ))}
                 </div>
               </div>
-              <span style={{ fontSize: 12, color: "#3a3a3a" }} className="truncate">{p.topic}</span>
+              <span style={{ fontSize: 12, color: "#3a3a3a" }} className="truncate">{p.topic?.name ?? "—"}</span>
               <span
                 className="px-2 py-0.5 rounded-full w-fit"
                 style={{
                   fontSize: 11,
                   fontWeight: 600,
-                  background: p.status === "Active" ? "#dcfce7" : "#f5f0e0",
-                  color: p.status === "Active" ? "#16a34a" : "#9a9a9a",
+                  background: p.status === "active" ? "#dcfce7" : "#f5f0e0",
+                  color: p.status === "active" ? "#16a34a" : "#9a9a9a",
+                  textTransform: "capitalize",
                 }}
               >
                 {p.status}
               </span>
-              {Object.entries(PLATFORM_COLORS).map(([platform, color]) => {
-                const v = p.platforms[platform as keyof typeof p.platforms];
-                return (
-                  <span key={platform} style={{ fontSize: 13, color: v > 0 ? color : "#d4cfc0", fontWeight: v > 0 ? 600 : 400 }}>
-                    {v > 0 ? `${v}%` : "—"}
-                  </span>
-                );
-              })}
+              {Object.keys(PLATFORM_COLORS).map((platform) => (
+                <span key={platform} style={{ fontSize: 13, color: "#d4cfc0", fontWeight: 400 }}>
+                  —
+                </span>
+              ))}
             </div>
 
             {/* Expanded row */}
@@ -269,21 +228,16 @@ export function PromptsPage() {
               <div className="px-6 py-5" style={{ background: "#fffaf0", borderBottom: "1px solid #e5e5e5" }}>
                 <p style={{ fontSize: 14, color: "#0a0a0a", marginBottom: 16, fontStyle: "italic" }}>"{p.text}"</p>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  {Object.entries(PLATFORM_COLORS).map(([platform, color]) => {
-                    const v = p.platforms[platform as keyof typeof p.platforms];
-                    return (
-                      <div key={platform} className="rounded-xl p-4" style={{ background: "#f5f0e0", border: "1px solid #e5e5e5" }}>
-                        <div className="flex items-center gap-1.5 mb-2">
-                          <div className="w-2 h-2 rounded-full" style={{ background: color }} />
-                          <span style={{ fontSize: 11, fontWeight: 600, color: "#6a6a6a" }}>{platform}</span>
-                        </div>
-                        <div style={{ fontSize: 22, fontWeight: 700, color: v > 0 ? "#0a0a0a" : "#d4cfc0" }}>
-                          {v > 0 ? `${v}%` : "—"}
-                        </div>
-                        <div style={{ fontSize: 11, color: "#9a9a9a" }}>visibility</div>
+                  {Object.entries(PLATFORM_COLORS).map(([platform, color]) => (
+                    <div key={platform} className="rounded-xl p-4" style={{ background: "#f5f0e0", border: "1px solid #e5e5e5" }}>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "#6a6a6a" }}>{platform}</span>
                       </div>
-                    );
-                  })}
+                      <div style={{ fontSize: 22, fontWeight: 700, color: "#d4cfc0" }}>—</div>
+                      <div style={{ fontSize: 11, color: "#9a9a9a" }}>No data yet</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

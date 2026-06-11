@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import {
   LayoutDashboard,
@@ -14,6 +14,9 @@ import {
   Plus,
   Zap,
 } from "lucide-react";
+import { useProjects } from "../../../hooks/useProjects";
+import { useProjectStore } from "../../../store/projectStore";
+import { useAuthStore } from "../../../store/authStore";
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -31,12 +34,6 @@ const SETTINGS_ITEMS = [
   { label: "Organization", path: "/settings/organization" },
 ];
 
-const PROJECTS = [
-  { id: "1", name: "Acme Corp" },
-  { id: "2", name: "TechStart Inc" },
-  { id: "3", name: "BuildFast" },
-];
-
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
@@ -45,9 +42,26 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [activeProject, setActiveProject] = useState(PROJECTS[0]);
+  const logout = useAuthStore((s) => s.logout);
+  const user = useAuthStore((s) => s.user);
+  const initials = (user?.name ?? "")
+    .split(" ")
+    .map((p) => p.charAt(0))
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "?";
+  const { data: projects = [] } = useProjects();
+  const { activeProjectId, setActiveProjectId } = useProjectStore();
   const [projectOpen, setProjectOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!activeProjectId && projects.length > 0) {
+      setActiveProjectId(projects[0].id);
+    }
+  }, [activeProjectId, projects, setActiveProjectId]);
+
+  const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0];
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + "/");
 
@@ -86,10 +100,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center mx-auto cursor-pointer hover:bg-[#ebe6d6] transition-colors"
             style={{ background: "#f5f0e0" }}
-            title={activeProject.name}
+            title={activeProject?.name ?? "No project"}
           >
             <span style={{ fontSize: 12, fontWeight: 600, color: "#0a0a0a" }}>
-              {activeProject.name.charAt(0)}
+              {activeProject?.name?.charAt(0) ?? "?"}
             </span>
           </div>
         ) : (
@@ -104,11 +118,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 style={{ background: "#1a3a3a" }}
               >
                 <span style={{ fontSize: 10, fontWeight: 700, color: "#fff" }}>
-                  {activeProject.name.charAt(0)}
+                  {activeProject?.name?.charAt(0) ?? "?"}
                 </span>
               </div>
               <span style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a" }} className="flex-1 truncate">
-                {activeProject.name}
+                {activeProject?.name ?? "No project"}
               </span>
               <ChevronDown size={14} color="#6a6a6a" className={`transition-transform ${projectOpen ? "rotate-180" : ""}`} />
             </button>
@@ -117,26 +131,31 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 className="absolute top-full left-0 right-0 mt-1 rounded-lg overflow-hidden shadow-lg z-50"
                 style={{ background: "#fffaf0", border: "1px solid #e5e5e5" }}
               >
-                {PROJECTS.map((p) => (
+                {projects.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => { setActiveProject(p); setProjectOpen(false); }}
+                    onClick={() => { setActiveProjectId(p.id); setProjectOpen(false); }}
                     className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#f5f0e0] transition-colors text-left"
                   >
                     <div
                       className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
-                      style={{ background: p.id === activeProject.id ? "#1a3a3a" : "#ebe6d6" }}
+                      style={{ background: p.id === activeProject?.id ? "#1a3a3a" : "#ebe6d6" }}
                     >
-                      <span style={{ fontSize: 9, fontWeight: 700, color: p.id === activeProject.id ? "#fff" : "#0a0a0a" }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: p.id === activeProject?.id ? "#fff" : "#0a0a0a" }}>
                         {p.name.charAt(0)}
                       </span>
                     </div>
                     <span style={{ fontSize: 13, color: "#0a0a0a" }}>{p.name}</span>
                   </button>
                 ))}
+                {projects.length === 0 && (
+                  <div className="px-3 py-2" style={{ fontSize: 13, color: "#9a9a9a" }}>
+                    No projects yet
+                  </div>
+                )}
                 <div style={{ borderTop: "1px solid #e5e5e5" }}>
                   <button
-                    onClick={() => setProjectOpen(false)}
+                    onClick={() => { setProjectOpen(false); navigate("/onboarding"); }}
                     className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#f5f0e0] transition-colors text-left"
                   >
                     <Plus size={14} color="#6a6a6a" />
@@ -232,9 +251,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center mx-auto cursor-pointer"
             style={{ background: "#1a3a3a", color: "#fff", fontSize: 12, fontWeight: 600 }}
-            title="Alex Kim — Marketing Lead"
+            title={user?.name ?? "Account"}
           >
-            AK
+            {initials}
           </div>
         ) : (
           <div className="flex items-center gap-2">
@@ -242,17 +261,17 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ background: "#1a3a3a", color: "#fff", fontSize: 11, fontWeight: 600 }}
             >
-              AK
+              {initials}
             </div>
             <div className="flex-1 min-w-0">
-              <div style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a" }} className="truncate">Alex Kim</div>
-              <div style={{ fontSize: 11, color: "#6a6a6a" }}>Marketing Lead</div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a" }} className="truncate">{user?.name ?? "Account"}</div>
+              <div style={{ fontSize: 11, color: "#6a6a6a" }} className="truncate">{user?.email ?? ""}</div>
             </div>
             <button
               className="p-1.5 rounded-md hover:bg-[#ebe6d6] transition-colors"
               style={{ color: "#6a6a6a" }}
               title="Sign out"
-              onClick={() => navigate("/login")}
+              onClick={logout}
             >
               <LogOut size={14} />
             </button>
