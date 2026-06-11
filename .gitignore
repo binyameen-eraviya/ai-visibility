@@ -1,0 +1,99 @@
+# ───────────────────────── Python ─────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+**/venv/
+**/.venv/
+
+# Coverage / test artifacts
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Local SQLite (not used in prod, but just in case)
+*.sqlite3
+*.db
+
+# ───────────────────────── Node / Frontend ─────────────────
+node_modules/
+**/node_modules/
+dist/
+dist-ssr/
+.vite/
+**/.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ───────────────────────── Env & secrets (CRITICAL) ────────
+# Ignore real env files everywhere...
+.env
+.env.*
+**/.env
+**/.env.*
+secrets.*
+.envrc
+# ...but ALWAYS keep the committed templates.
+!.env.example
+!**/.env.example
+
+# ───────────────────────── Scrape storage ─────────────────
+# Raw captured answers/screenshots live on a Docker volume; if mounted
+# locally to ./storage, never commit the captures.
+storage/
+**/storage/scrapes/
+
+# ───────────────────────── Docker ─────────────────────────
+# Dockerfiles, docker-compose.yml, .dockerignore ARE committed.
+# Only ignore local volume/data dumps if any are bind-mounted here.
+**/postgres_data/
+**/redis_data/
+
+# ───────────────────────── IDE / Editor ───────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ───────────────────────── OS ─────────────────────────────
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ───────────────────────── Logs ───────────────────────────
+*.log
+logs/
+
+# ───────────────────────── Misc ───────────────────────────
+*.bak
+*.tmp
+*.orig
+*.rej
+
+# NOTE: alembic migration versions (backend/alembic/versions/*.py) are
+# intentionally NOT ignored — they must be committed. Only their compiled
+# artifacts are excluded via the global __pycache__/*.pyc rules above.
