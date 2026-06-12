@@ -24,6 +24,9 @@ from backend.services.website_analyzer import WebsiteAnalysis
 logger = logging.getLogger(__name__)
 
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+# Lighter model with a separate, more generous quota -- used when the primary
+# model (LLM_MODEL) is rate-limited (429) or overloaded (5xx).
+_FALLBACK_MODEL = "gemini-2.0-flash-lite"
 _PLACEHOLDER_KEYS = {"", "your-api-key-here", "change-me"}
 
 
@@ -158,7 +161,6 @@ class GeminiLLMService(BaseLLMService):
             logger.info("llm_service: no LLM_API_KEY configured; using fallback suggestions")
             return fallback
 
-        url = _GEMINI_URL.format(model=self.model)
         payload = {
             "contents": [{"parts": [{"text": _build_prompt(website_data)}]}],
             "generationConfig": {"temperature": 0.7, "responseMimeType": "application/json"},
@@ -167,36 +169,48 @@ class GeminiLLMService(BaseLLMService):
         # URL -- and so it can't leak through error/log text.
         headers = {"x-goog-api-key": self.api_key, "Content-Type": "application/json"}
 
-        # Retry once on transient overload (Gemini free tier 503s under spikes)
-        # / rate-limit / timeout before giving up to the fallback.
-        for attempt in range(2):
+        # Try the configured model first; if it's rate-limited (429) or
+        # overloaded (5xx), retry once with the lighter fallback model (separate,
+        # more generous quota) before giving up to the offline fallback.
+        models = [self.model]
+        if _FALLBACK_MODEL not in models:
+            models.append(_FALLBACK_MODEL)
+
+        for model in models:
+            url = _GEMINI_URL.format(model=model)
             try:
                 async with httpx.AsyncClient(timeout=12.0) as client:
                     resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code in (429, 500, 502, 503, 504):
-                    if attempt == 0:
-                        await asyncio.sleep(1.5)
-                        continue
-                    logger.warning("llm_service: brand analysis failed (HTTP %s), using fallback", resp.status_code)
-                    return fallback
+                    logger.warning(
+                        "llm_service: model %s unavailable (HTTP %s); trying fallback model",
+                        model, resp.status_code,
+                    )
+                    await asyncio.sleep(0.5)
+                    continue  # try the next model
                 resp.raise_for_status()
                 body = resp.json()
                 text = body["candidates"][0]["content"]["parts"][0]["text"]
                 # Full response for prompt tuning (LOG_LEVEL=DEBUG).
-                logger.debug("llm_service: raw LLM response for %s:\n%s", website_data.url, text)
+                logger.debug("llm_service: raw LLM response (%s) for %s:\n%s", model, website_data.url, text)
                 return _coerce(_parse_json(text), fallback)
             except httpx.HTTPStatusError as e:
                 # 4xx (bad key/request) -- no point retrying. Log status only,
                 # never str(e), which contains the request URL.
-                logger.warning("llm_service: brand analysis failed (HTTP %s), using fallback", e.response.status_code)
+                logger.warning(
+                    "llm_service: brand analysis failed (HTTP %s) on %s, using fallback",
+                    e.response.status_code, model,
+                )
                 return fallback
             except (httpx.TimeoutException, httpx.TransportError):
-                if attempt == 0:
-                    await asyncio.sleep(1.0)
-                    continue
-                logger.warning("llm_service: brand analysis timed out, using fallback")
-                return fallback
+                logger.warning("llm_service: %s timed out; trying fallback model", model)
+                continue
             except Exception as e:
-                logger.warning("llm_service: brand analysis failed (%s), using fallback", type(e).__name__)
+                logger.warning(
+                    "llm_service: brand analysis failed (%s) on %s, using fallback",
+                    type(e).__name__, model,
+                )
                 return fallback
+
+        logger.warning("llm_service: all models rate-limited/unavailable, using fallback")
         return fallback
