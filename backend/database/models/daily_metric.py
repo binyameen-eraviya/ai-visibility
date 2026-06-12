@@ -21,6 +21,7 @@ class DailyMetric:
         mention_count: int,
         avg_position: float = None,
         avg_sentiment: float = None,
+        web_search_pct: float = 0.0,
     ):
         """Insert or update the metric row for this scope + date."""
         try:
@@ -31,6 +32,7 @@ class DailyMetric:
                 "share_of_voice": share_of_voice,
                 "total_runs": total_runs,
                 "mention_count": mention_count,
+                "web_search_pct": web_search_pct,
             }
             stmt = insert(DailyMetricTable).values(
                 id=uuid.uuid4(),

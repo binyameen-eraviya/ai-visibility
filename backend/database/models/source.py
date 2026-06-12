@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.utils.enums import SourceType
+from backend.utils.enums import SourceType, UrlType
 from backend.database.migrations.source import Source as SourceTable
 
 class Source:
@@ -24,6 +24,7 @@ class Source:
         url: str,
         domain: str,
         source_type: SourceType = SourceType.OTHER,
+        url_type: UrlType = UrlType.OTHER,
         position: int = None,
     ):
         try:
@@ -33,6 +34,7 @@ class Source:
                 url=url,
                 domain=domain,
                 source_type=source_type,
+                url_type=url_type,
                 position=position,
             )
             db.add(source)

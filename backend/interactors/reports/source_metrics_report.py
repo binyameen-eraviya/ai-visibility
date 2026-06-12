@@ -4,7 +4,7 @@ from datetime import date
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.utils.enums import SourceType
+from backend.utils.enums import SourceType, UrlType
 from backend.database.models.source_metric import SourceMetric as SourceMetricDB
 from backend.interactors.helpers.project_access import verify_project_access
 
@@ -15,6 +15,7 @@ async def call(
     end_date: date,
     current_user,
     source_type: SourceType = None,
+    url_type: UrlType = None,
 ):
     await verify_project_access(db, project_id, current_user)
 
@@ -25,6 +26,7 @@ async def call(
             start_date=start_date,
             end_date=end_date,
             source_type=source_type,
+            url_type=url_type,
         )
         return metrics
     except Exception as e:

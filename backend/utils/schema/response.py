@@ -3,6 +3,11 @@ import uuid
 from datetime import datetime, date
 from typing import List, Optional
 
+# Alias so an Optional field literally named `date` doesn't shadow the `date`
+# type during Pydantic's annotation resolution (class attr `date=None` would
+# otherwise be picked up, collapsing the type to NoneType).
+DateType = date
+
 from backend.utils.enums import (
     AdapterType,
     PromptStatus,
@@ -10,6 +15,7 @@ from backend.utils.enums import (
     ScrapeStatus,
     SourceType,
     TrackingFrequency,
+    UrlType,
 )
 
 class UserResponse(BaseModel):
@@ -166,32 +172,59 @@ class CountryResponse(BaseModel):
         from_attributes = True
 
 class DailyMetricResponse(BaseModel):
-    id: uuid.UUID
-    project_id: uuid.UUID
-    brand_id: uuid.UUID
-    platform_id: uuid.UUID
-    country_id: uuid.UUID
-    date: date
+    # Key fields are optional so grouped responses (group_by=date/platform/brand)
+    # can omit the dimensions they collapse over.
+    id: Optional[uuid.UUID] = None
+    project_id: Optional[uuid.UUID] = None
+    brand_id: Optional[uuid.UUID] = None
+    platform_id: Optional[uuid.UUID] = None
+    country_id: Optional[uuid.UUID] = None
+    date: Optional[DateType] = None
     visibility_pct: float
-    avg_position: Optional[float]
-    avg_sentiment: Optional[float]
+    avg_position: Optional[float] = None
+    avg_sentiment: Optional[float] = None
     share_of_voice: float
     total_runs: int
     mention_count: int
+    web_search_pct: float = 0.0
 
     class Config:
         from_attributes = True
 
 class SourceMetricResponse(BaseModel):
-    id: uuid.UUID
-    project_id: uuid.UUID
+    id: Optional[uuid.UUID] = None
+    project_id: Optional[uuid.UUID] = None
     domain: str
     source_type: SourceType
-    date: date
+    url_type: UrlType = UrlType.OTHER
+    date: Optional[DateType] = None
     citation_count: int
+    retrieved_pct: float = 0.0
+    citation_rate: float = 0.0
 
     class Config:
         from_attributes = True
+
+class GapAnalysisResponse(BaseModel):
+    domain: str
+    domain_type: SourceType = SourceType.OTHER
+    gap_score: int
+    competitor_mentions: int
+    retrieved_pct: float = 0.0
+
+class BrandPlatformInsight(BaseModel):
+    platform_id: uuid.UUID
+    platform_name: str
+    visibility_pct: float
+    avg_sentiment: Optional[float] = None
+    avg_position: Optional[float] = None
+    share_of_voice: float
+
+class BrandInsightResponse(BaseModel):
+    brand_id: uuid.UUID
+    brand_name: str
+    is_primary: bool = False
+    platforms: List[BrandPlatformInsight] = []
 
 class ScrapeRunResponse(BaseModel):
     id: uuid.UUID

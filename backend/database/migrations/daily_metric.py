@@ -49,6 +49,8 @@ class DailyMetric(Base):
     share_of_voice = Column(FLOAT, nullable=False, default=0.0)
     total_runs = Column(INTEGER, nullable=False, default=0)
     mention_count = Column(INTEGER, nullable=False, default=0)
+    # Share of the day's chats (for this scope) where the AI used a web search.
+    web_search_pct = Column(FLOAT, nullable=False, default=0.0, server_default=text("0"))
     created_at = Column(
         TIMESTAMP(timezone=True),
         nullable=False,
