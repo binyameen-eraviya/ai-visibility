@@ -38,6 +38,22 @@ _MAX_BODY_WORDS = 2000
 _ALLOWED_SCHEMES = {"http", "https"}
 _MAX_REDIRECTS = 3
 
+# Below this many chars of extracted body text -- combined with no headings and
+# no JSON-LD -- the httpx fetch is treated as an empty client-rendered shell and
+# we fall back to Playwright to render it.
+SPA_DETECTION_THRESHOLD = 200  # chars of body text below which we suspect SPA
+
+# A real desktop Chrome UA for the Playwright fallback (the bot UA above invites
+# more blocking; a SPA we couldn't read statically is exactly where it matters).
+_CHROME_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+# networkidle wait, then a hard ceiling on the whole Playwright attempt so the
+# analyze-website endpoint still answers within ~30s even when rendering is slow.
+_PLAYWRIGHT_NAV_TIMEOUT_MS = 15000
+_PLAYWRIGHT_TOTAL_TIMEOUT_S = 20.0
+
 
 class WebsiteUnreachableError(Exception):
     """Raised when the homepage cannot be fetched."""
@@ -308,37 +324,15 @@ def _extract_location_signals(text: str) -> str:
     return " | ".join(hints[:8])
 
 
-async def analyze_website(url: str) -> WebsiteAnalysis:
-    """Fetch homepage + common pages and extract a light text signal.
+def _build_analysis(url: str, raw_pages: dict) -> WebsiteAnalysis:
+    """Run the extraction pipeline over fetched HTML pages.
 
-    Raises WebsiteUnreachableError (incl. BlockedURLError) if the homepage
-    cannot be fetched or targets a non-public address.
+    Shared by the httpx path and the Playwright fallback so a JS-rendered SPA
+    goes through exactly the same title/description/headings/JSON-LD/geo
+    extraction as a server-rendered site. `raw_pages` maps path -> HTML; the
+    homepage lives under "/".
     """
-    url = normalize_url(url)
-    if not url or not urlparse(url).netloc:
-        raise WebsiteUnreachableError(f"Invalid URL: {url!r}")
-
-    headers = {"User-Agent": _USER_AGENT, "Accept": "text/html"}
-    # follow_redirects=False: redirects are followed manually in _safe_get so
-    # each hop is re-validated by the SSRF guard.
-    async with httpx.AsyncClient(timeout=8.0, follow_redirects=False, headers=headers) as client:
-        home = await _safe_get(client, url)  # may raise BlockedURLError
-        if home is None:
-            raise WebsiteUnreachableError(f"Could not reach {url}")
-
-        raw_pages = {"/": home}
-
-        async def _try(path: str):
-            try:
-                return await _safe_get(client, urljoin(url, path))
-            except WebsiteUnreachableError:
-                return None
-
-        secondary = await asyncio.gather(*[_try(p) for p in COMMON_PATHS])
-        for path, content in zip(COMMON_PATHS, secondary):
-            if isinstance(content, str) and content:
-                raw_pages[path] = content
-
+    home = raw_pages.get("/", "")
     title = _extract_title(home)
     description = _extract_meta_description(home)
 
@@ -383,3 +377,148 @@ async def analyze_website(url: str) -> WebsiteAnalysis:
         raw_pages=raw_pages,
         detected_location=detected_location,
     )
+
+
+def _has_jsonld(raw_pages: dict) -> bool:
+    """True if any page carries a non-empty application/ld+json block."""
+    for content in raw_pages.values():
+        for block in re.findall(
+            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            content, re.IGNORECASE | re.DOTALL,
+        ):
+            try:
+                if json.loads(block.strip()):
+                    return True
+            except Exception:
+                continue
+    return False
+
+
+def _is_empty_shell(analysis: WebsiteAnalysis, raw_pages: dict) -> bool:
+    """Detect a client-rendered SPA whose static HTML carries no real signal.
+
+    Empty shell = under SPA_DETECTION_THRESHOLD chars of body text AND no
+    headings AND no JSON-LD. All three must hold: a site with structured data
+    or visible headings gave us something usable even if the body is short.
+    """
+    return (
+        len(analysis.body_text) < SPA_DETECTION_THRESHOLD
+        and not analysis.headings
+        and not _has_jsonld(raw_pages)
+    )
+
+
+async def _render_with_playwright(url: str) -> str | None:
+    """Render a client-side SPA with headless Chromium; return its HTML or None.
+
+    Playwright is heavy, so it's imported lazily here and only ever used as the
+    empty-shell fallback. One browser, one context, one page -- no reuse. The
+    URL is re-validated against the SSRF guard before we navigate (Chromium does
+    its own DNS, bypassing _safe_get's IP pinning, so a rebind would otherwise
+    slip through). Returns None on any failure so the caller keeps httpx's data.
+    """
+    # Re-validate: reject if the host now resolves to a non-public address.
+    try:
+        await asyncio.to_thread(_resolve_and_validate, url)
+    except BlockedURLError:
+        logger.warning("website_analyzer: %s blocked by SSRF guard; skipping Playwright", url)
+        return None
+
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        logger.warning("website_analyzer: playwright not installed; cannot render SPA")
+        return None
+
+    try:  # playwright-stealth masks automation fingerprints; degrade if absent.
+        from playwright_stealth import Stealth
+        pw_cm = Stealth().use_async(async_playwright())
+    except Exception:
+        pw_cm = async_playwright()
+
+    async with pw_cm as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+        )
+        try:
+            context = await browser.new_context(user_agent=_CHROME_USER_AGENT, locale="en-US")
+            page = await context.new_page()
+            await page.goto(url, wait_until="networkidle", timeout=_PLAYWRIGHT_NAV_TIMEOUT_MS)
+            return await page.content()
+        finally:
+            await browser.close()
+
+
+async def analyze_website(url: str) -> WebsiteAnalysis:
+    """Fetch homepage + common pages and extract a light text signal.
+
+    Fast path is httpx (SSR sites resolve in well under 10s). If the static HTML
+    is an empty client-rendered shell, falls back to Playwright to render the
+    SPA, then runs the same extraction over the rendered HTML.
+
+    Raises WebsiteUnreachableError (incl. BlockedURLError) if the homepage
+    cannot be fetched or targets a non-public address.
+    """
+    url = normalize_url(url)
+    if not url or not urlparse(url).netloc:
+        raise WebsiteUnreachableError(f"Invalid URL: {url!r}")
+
+    headers = {"User-Agent": _USER_AGENT, "Accept": "text/html"}
+    # follow_redirects=False: redirects are followed manually in _safe_get so
+    # each hop is re-validated by the SSRF guard.
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=False, headers=headers) as client:
+        home = await _safe_get(client, url)  # may raise BlockedURLError
+        if home is None:
+            raise WebsiteUnreachableError(f"Could not reach {url}")
+
+        raw_pages = {"/": home}
+
+        async def _try(path: str):
+            try:
+                return await _safe_get(client, urljoin(url, path))
+            except WebsiteUnreachableError:
+                return None
+
+        secondary = await asyncio.gather(*[_try(p) for p in COMMON_PATHS])
+        for path, content in zip(COMMON_PATHS, secondary):
+            if isinstance(content, str) and content:
+                raw_pages[path] = content
+
+    analysis = _build_analysis(url, raw_pages)
+
+    if not _is_empty_shell(analysis, raw_pages):
+        logger.info("[website_analyzer] %s: using httpx (SSR)", url)
+        return analysis
+
+    # Empty shell: likely a JS-rendered SPA. Try Playwright, but timebox the whole
+    # attempt -- partial httpx data beats hanging the endpoint past its budget.
+    logger.info(
+        "[website_analyzer] %s: httpx returned empty shell, falling back to Playwright (SPA)", url
+    )
+    try:
+        rendered = await asyncio.wait_for(
+            _render_with_playwright(url), timeout=_PLAYWRIGHT_TOTAL_TIMEOUT_S
+        )
+    except asyncio.TimeoutError:
+        logger.warning("[website_analyzer] %s: Playwright timed out; using httpx data", url)
+        rendered = None
+    except Exception as e:
+        logger.warning(
+            "[website_analyzer] %s: Playwright render failed (%s); using httpx data",
+            url, type(e).__name__,
+        )
+        rendered = None
+
+    if rendered:
+        # Re-run extraction over the rendered HTML, keeping any secondary pages
+        # httpx did manage to fetch.
+        rendered_pages = dict(raw_pages)
+        rendered_pages["/"] = rendered
+        rendered_analysis = _build_analysis(url, rendered_pages)
+        # Only prefer the rendered result if it actually gave us more to work with.
+        if not _is_empty_shell(rendered_analysis, rendered_pages):
+            logger.info("[website_analyzer] %s: Playwright render succeeded (SPA)", url)
+            return rendered_analysis
+
+    return analysis
