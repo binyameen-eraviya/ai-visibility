@@ -6,6 +6,7 @@ from sqlalchemy import (
  TEXT,
  TIMESTAMP,
  Column,
+ UniqueConstraint,
  text,
 )
 
@@ -22,6 +23,9 @@ class DomainClassification(Base):
     """
 
     __tablename__ = "domain_classifications"
+    __table_args__ = (
+        UniqueConstraint("domain", name="uq_domain_classifications_domain"),
+    )
 
     id = Column(
         UUID(as_uuid=True),
@@ -29,7 +33,7 @@ class DomainClassification(Base):
         default=uuid.uuid4,
         server_default=text("gen_random_uuid()"),
     )
-    domain = Column(TEXT, nullable=False, unique=True)
+    domain = Column(TEXT, nullable=False)
     domain_type = Column(
         ENUM(SourceType, name="source_type"),
         nullable=False,
