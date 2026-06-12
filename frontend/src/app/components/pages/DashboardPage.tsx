@@ -6,6 +6,7 @@ import { useProjectStore } from "../../../store/projectStore";
 import { useBrands, type Brand } from "../../../hooks/useBrands";
 import { usePlatforms, useTrackingConfigs, type Platform } from "../../../hooks/useTrackingConfigs";
 import { useDailyMetrics, useSourceMetrics, type DailyMetric, type SourceMetric } from "../../../hooks/useReports";
+import { BrandIcon } from "../../../utils/favicon";
 import { useRuns } from "../../../hooks/useScrapeRuns";
 import { usePrompts } from "../../../hooks/usePrompts";
 import { Skeleton } from "../ui/skeleton";
@@ -80,6 +81,8 @@ function aggregateByBrand(metrics: DailyMetric[], brands: Brand[]) {
       return {
         brand: brand?.name ?? "Unknown",
         isYou: brand?.is_primary ?? false,
+        faviconUrl: brand?.favicon_url ?? undefined,
+        domain: brand?.website_url ?? undefined,
         visibility: Math.round((ms.reduce((s, m) => s + m.visibility_pct, 0) / ms.length) * 10) / 10,
         position: withPos.length ? Math.round((withPos.reduce((s, m) => s + (m.avg_position ?? 0), 0) / withPos.length) * 10) / 10 : null,
         sentiment: withSent.length ? Math.round(withSent.reduce((s, m) => s + (m.avg_sentiment ?? 0), 0) / withSent.length) : null,
@@ -281,9 +284,15 @@ export function DashboardPage() {
                 <div key={c.brand} className="grid gap-2 py-3 items-center"
                   style={{ gridTemplateColumns: "1fr 80px 70px 70px 64px", borderBottom: "1px solid #e5e5e5", borderLeft: c.isYou ? "3px solid #1a3a3a" : "3px solid transparent", paddingLeft: c.isYou ? 8 : 0 }}>
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: c.isYou ? "#1a3a3a" : "#ebe6d6" }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: c.isYou ? "#fff" : "#6a6a6a" }}>{c.brand.charAt(0)}</span>
-                    </div>
+                    <BrandIcon
+                      name={c.brand}
+                      faviconUrl={c.faviconUrl}
+                      domain={c.domain}
+                      size={24}
+                      radius={6}
+                      bg={c.isYou ? "#1a3a3a" : "#ebe6d6"}
+                      color={c.isYou ? "#fff" : "#6a6a6a"}
+                    />
                     <span style={{ fontSize: 13, fontWeight: c.isYou ? 600 : 400, color: "#0a0a0a" }}>{c.brand}</span>
                     {c.isYou && <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: "#1a3a3a", color: "#fff", fontSize: 10 }}>You</span>}
                   </div>

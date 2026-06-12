@@ -5,6 +5,7 @@ import { useProjectStore } from "../../../store/projectStore";
 import { useBrands, type Brand } from "../../../hooks/useBrands";
 import { useDailyMetrics, type DailyMetric } from "../../../hooks/useReports";
 import { Skeleton } from "../ui/skeleton";
+import { BrandIcon } from "../../../utils/favicon";
 
 function aggregateByBrand(metrics: DailyMetric[], brands: Brand[]) {
   const brandMap = new Map(brands.map((b) => [b.id, b]));
@@ -21,6 +22,8 @@ function aggregateByBrand(metrics: DailyMetric[], brands: Brand[]) {
       return {
         name: brand?.name ?? "Unknown",
         isYou: brand?.is_primary ?? false,
+        faviconUrl: brand?.favicon_url ?? undefined,
+        domain: brand?.website_url ?? undefined,
         visibility: Math.round((ms.reduce((s, m) => s + m.visibility_pct, 0) / ms.length) * 10) / 10,
         position: withPos.length ? Math.round((withPos.reduce((s, m) => s + (m.avg_position ?? 0), 0) / withPos.length) * 10) / 10 : null,
         sentiment: withSent.length ? Math.round(withSent.reduce((s, m) => s + (m.avg_sentiment ?? 0), 0) / withSent.length) : null,
@@ -87,9 +90,15 @@ export function CompetitorsPage() {
                 style={{ background: b.isYou ? "#1a3a3a" : "#f5f0e0", border: b.isYou ? "none" : "1px solid #e5e5e5" }}
               >
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: b.isYou ? "rgba(255,255,255,0.15)" : "#ebe6d6" }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: b.isYou ? "#fff" : "#6a6a6a" }}>{b.name.charAt(0)}</span>
-                  </div>
+                  <BrandIcon
+                    name={b.name}
+                    faviconUrl={b.faviconUrl}
+                    domain={b.domain}
+                    size={28}
+                    radius={8}
+                    bg={b.isYou ? "rgba(255,255,255,0.15)" : "#ebe6d6"}
+                    color={b.isYou ? "#fff" : "#6a6a6a"}
+                  />
                   <span style={{ fontSize: 12, fontWeight: 600, color: b.isYou ? "#fff" : "#0a0a0a" }} className="truncate">{b.name}</span>
                 </div>
                 {b.isYou && (
