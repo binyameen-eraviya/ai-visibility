@@ -117,8 +117,8 @@ def _parse_json(text: str) -> dict:
         return json.loads(fenced)
     except Exception:
         pass
-    # Last resort: grab the outermost {...} block.
-    m = re.search(r"\{.*\}", text, re.DOTALL)
+    # Last resort: grab the outermost {...} or [...] block.
+    m = re.search(r"(\{.*\}|\[.*\])", text, re.DOTALL)
     if m:
         return json.loads(m.group(0))
     raise ValueError("No JSON object found in LLM response")
@@ -154,24 +154,24 @@ class GeminiLLMService(BaseLLMService):
         self.api_key = api_key if api_key is not None else os.getenv("LLM_API_KEY", "")
         self.model = model or os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
-    async def analyze_brand(self, website_data: WebsiteAnalysis) -> BrandSuggestions:
-        fallback = _fallback(website_data)
+    def _has_key(self) -> bool:
+        return bool(self.api_key) and self.api_key.strip().lower() not in _PLACEHOLDER_KEYS
 
-        if not self.api_key or self.api_key.strip().lower() in _PLACEHOLDER_KEYS:
-            logger.info("llm_service: no LLM_API_KEY configured; using fallback suggestions")
-            return fallback
+    async def _generate_text(self, prompt: str, temperature: float = 0.7, timeout: float = 12.0):
+        """Call Gemini with model fallback; return the response text or None.
 
+        Tries the configured model first; on rate-limit (429) / overload (5xx) /
+        timeout it retries once with the lighter fallback model (separate, more
+        generous quota). Returns None if every model fails or the request is
+        rejected (4xx) -- callers decide what fallback to use. The API key is
+        sent as a header and never logged (str(e) would contain the URL).
+        """
         payload = {
-            "contents": [{"parts": [{"text": _build_prompt(website_data)}]}],
-            "generationConfig": {"temperature": 0.7, "responseMimeType": "application/json"},
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"},
         }
-        # Auth via header (not a ?key= query param) so the key never lands in a
-        # URL -- and so it can't leak through error/log text.
         headers = {"x-goog-api-key": self.api_key, "Content-Type": "application/json"}
 
-        # Try the configured model first; if it's rate-limited (429) or
-        # overloaded (5xx), retry once with the lighter fallback model (separate,
-        # more generous quota) before giving up to the offline fallback.
         models = [self.model]
         if _FALLBACK_MODEL not in models:
             models.append(_FALLBACK_MODEL)
@@ -179,7 +179,7 @@ class GeminiLLMService(BaseLLMService):
         for model in models:
             url = _GEMINI_URL.format(model=model)
             try:
-                async with httpx.AsyncClient(timeout=12.0) as client:
+                async with httpx.AsyncClient(timeout=timeout) as client:
                     resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code in (429, 500, 502, 503, 504):
                     logger.warning(
@@ -191,26 +191,55 @@ class GeminiLLMService(BaseLLMService):
                 resp.raise_for_status()
                 body = resp.json()
                 text = body["candidates"][0]["content"]["parts"][0]["text"]
-                # Full response for prompt tuning (LOG_LEVEL=DEBUG).
-                logger.debug("llm_service: raw LLM response (%s) for %s:\n%s", model, website_data.url, text)
-                return _coerce(_parse_json(text), fallback)
+                logger.debug("llm_service: raw LLM response (%s):\n%s", model, text)
+                return text
             except httpx.HTTPStatusError as e:
-                # 4xx (bad key/request) -- no point retrying. Log status only,
-                # never str(e), which contains the request URL.
+                # 4xx (bad key/request) -- no point retrying other models.
                 logger.warning(
-                    "llm_service: brand analysis failed (HTTP %s) on %s, using fallback",
-                    e.response.status_code, model,
+                    "llm_service: request failed (HTTP %s) on %s", e.response.status_code, model,
                 )
-                return fallback
+                return None
             except (httpx.TimeoutException, httpx.TransportError):
                 logger.warning("llm_service: %s timed out; trying fallback model", model)
                 continue
             except Exception as e:
-                logger.warning(
-                    "llm_service: brand analysis failed (%s) on %s, using fallback",
-                    type(e).__name__, model,
-                )
-                return fallback
+                logger.warning("llm_service: request failed (%s) on %s", type(e).__name__, model)
+                return None
 
-        logger.warning("llm_service: all models rate-limited/unavailable, using fallback")
-        return fallback
+        logger.warning("llm_service: all models rate-limited/unavailable")
+        return None
+
+    async def generate_json(self, prompt: str, temperature: float = 0.3):
+        """Run a JSON-returning prompt; return the parsed object/list or None.
+
+        Generic entry point reused by the parser (mention/sentiment/source
+        classification). Returns None when the LLM is unavailable or the
+        response can't be parsed as JSON -- callers degrade gracefully.
+        """
+        if not self._has_key():
+            logger.info("llm_service: no LLM_API_KEY configured; skipping LLM call")
+            return None
+        text = await self._generate_text(prompt, temperature=temperature)
+        if text is None:
+            return None
+        try:
+            return _parse_json(text)
+        except Exception:
+            logger.warning("llm_service: could not parse JSON from LLM response")
+            return None
+
+    async def analyze_brand(self, website_data: WebsiteAnalysis) -> BrandSuggestions:
+        fallback = _fallback(website_data)
+
+        if not self._has_key():
+            logger.info("llm_service: no LLM_API_KEY configured; using fallback suggestions")
+            return fallback
+
+        text = await self._generate_text(_build_prompt(website_data), temperature=0.7)
+        if text is None:
+            return fallback
+        try:
+            return _coerce(_parse_json(text), fallback)
+        except Exception as e:
+            logger.warning("llm_service: brand analysis parse failed (%s), using fallback", type(e).__name__)
+            return fallback
