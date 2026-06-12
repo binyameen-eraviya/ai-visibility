@@ -23,6 +23,10 @@ export interface RunPromptPayload {
   country_id?: string;
 }
 
+// Runs in these states are still being worked by Celery -> keep polling.
+export const ACTIVE_STATUSES = new Set(["PENDING", "RUNNING", "RETRYING"]);
+const POLL_MS = 5000;
+
 export function useRuns(projectId?: string) {
   return useQuery<ScrapeRun[]>({
     queryKey: ["projects", projectId, "runs"],
@@ -31,6 +35,11 @@ export function useRuns(projectId?: string) {
       return data;
     },
     enabled: !!projectId,
+    // Poll while any run is still in flight; stop once everything settled.
+    refetchInterval: (query) => {
+      const data = query.state.data as ScrapeRun[] | undefined;
+      return data?.some((r) => ACTIVE_STATUSES.has(r.status)) ? POLL_MS : false;
+    },
   });
 }
 
@@ -42,6 +51,10 @@ export function useRunDetail(projectId?: string, runId?: string) {
       return data;
     },
     enabled: !!projectId && !!runId,
+    refetchInterval: (query) => {
+      const data = query.state.data as ScrapeRunDetail | undefined;
+      return data && ACTIVE_STATUSES.has(data.status) ? POLL_MS : false;
+    },
   });
 }
 
