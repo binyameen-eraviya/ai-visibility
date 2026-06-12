@@ -53,6 +53,7 @@ class SourceMetric:
         start_date: date_type,
         end_date: date_type,
         source_type: SourceType = None,
+        url_type: UrlType = None,
     ):
         """Dashboard query: cited domains for a project over a date range."""
         try:
@@ -63,6 +64,8 @@ class SourceMetric:
             )
             if source_type is not None:
                 stmt = stmt.where(SourceMetricTable.source_type == source_type)
+            if url_type is not None:
+                stmt = stmt.where(SourceMetricTable.url_type == url_type)
             stmt = stmt.order_by(SourceMetricTable.date, desc(SourceMetricTable.citation_count))
 
             result = await db.execute(stmt)
