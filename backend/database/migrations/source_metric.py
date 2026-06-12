@@ -4,6 +4,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy import (
  DATE,
+ FLOAT,
  INTEGER,
  TEXT,
  TIMESTAMP,
@@ -15,7 +16,7 @@ from sqlalchemy import (
 )
 
 from backend.database.db import Base
-from backend.utils.enums import SourceType
+from backend.utils.enums import SourceType, UrlType
 from backend.database.migrations.project import Project  # noqa: F401  (mapper registration)
 
 class SourceMetric(Base):
@@ -40,8 +41,18 @@ class SourceMetric(Base):
         nullable=False,
         server_default=SourceType.OTHER.value,
     )
+    # Dominant page type cited for this domain (most common across the day).
+    url_type = Column(
+        ENUM(UrlType, name="url_type"),
+        nullable=False,
+        server_default=UrlType.OTHER.value,
+    )
     date = Column(DATE, nullable=False)
     citation_count = Column(INTEGER, nullable=False, default=0)
+    # This domain's citations / all citations that day (0..1).
+    retrieved_pct = Column(FLOAT, nullable=False, default=0.0, server_default=text("0"))
+    # Avg times this domain is cited per chat in which it appears (>= 1.0).
+    citation_rate = Column(FLOAT, nullable=False, default=0.0, server_default=text("0"))
     created_at = Column(
         TIMESTAMP(timezone=True),
         nullable=False,

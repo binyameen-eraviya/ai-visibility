@@ -5,7 +5,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.utils.enums import SourceType
+from backend.utils.enums import SourceType, UrlType
 from backend.database.migrations.source_metric import SourceMetric as SourceMetricTable
 
 class SourceMetric:
@@ -16,19 +16,28 @@ class SourceMetric:
         date: date_type,
         citation_count: int,
         source_type: SourceType = SourceType.OTHER,
+        url_type: UrlType = UrlType.OTHER,
+        retrieved_pct: float = 0.0,
+        citation_rate: float = 0.0,
     ):
         """Insert or update the citation count for this project + domain + date."""
         try:
+            fields = {
+                "citation_count": citation_count,
+                "source_type": source_type,
+                "url_type": url_type,
+                "retrieved_pct": retrieved_pct,
+                "citation_rate": citation_rate,
+            }
             stmt = insert(SourceMetricTable).values(
                 id=uuid.uuid4(),
                 project_id=project_id,
                 domain=domain,
                 date=date,
-                citation_count=citation_count,
-                source_type=source_type,
+                **fields,
             ).on_conflict_do_update(
                 constraint="uq_source_metrics_project_domain_date",
-                set_={"citation_count": citation_count, "source_type": source_type},
+                set_=fields,
             ).returning(SourceMetricTable)
             result = await db.execute(stmt)
             metric = result.scalars().first()

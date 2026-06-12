@@ -38,4 +38,26 @@ class SourceType(Enum):
     CORPORATE = "CORPORATE"
     UGC = "UGC"
     REFERENCE = "REFERENCE"
+    INSTITUTIONAL = "INSTITUTIONAL"  # .gov / .edu / NGOs / standards bodies
+    COMPETITOR = "COMPETITOR"  # domain belongs to a tracked competitor brand
     OTHER = "OTHER"
+
+
+class UrlType(Enum):
+    """What kind of page a cited URL is (from path/title heuristics or LLM)."""
+    LISTICLE = "LISTICLE"
+    ARTICLE = "ARTICLE"
+    HOMEPAGE = "HOMEPAGE"
+    PRODUCT_PAGE = "PRODUCT_PAGE"
+    COMPARISON = "COMPARISON"
+    HOW_TO = "HOW_TO"
+    DISCUSSION = "DISCUSSION"
+    OTHER = "OTHER"
+
+
+class DomainClassifier(Enum):
+    """How a domain_classifications row was produced (provenance for the cache)."""
+    KNOWN_LIST = "KNOWN_LIST"
+    LLM = "LLM"
+    BRAND_MATCH = "BRAND_MATCH"
+    MANUAL = "MANUAL"

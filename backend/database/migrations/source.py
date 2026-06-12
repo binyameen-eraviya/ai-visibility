@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 
 from backend.database.db import Base
-from backend.utils.enums import SourceType
+from backend.utils.enums import SourceType, UrlType
 from backend.database.migrations.answer import Answer  # noqa: F401  (mapper registration)
 
 class Source(Base):
@@ -34,6 +34,11 @@ class Source(Base):
         ENUM(SourceType, name="source_type"),
         nullable=False,
         server_default=SourceType.OTHER.value,
+    )
+    url_type = Column(
+        ENUM(UrlType, name="url_type"),
+        nullable=False,
+        server_default=UrlType.OTHER.value,
     )
     position = Column(INTEGER, nullable=True)  # order in the answer
     created_at = Column(

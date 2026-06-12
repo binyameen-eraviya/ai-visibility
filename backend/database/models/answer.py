@@ -39,6 +39,7 @@ class Answer:
         scrape_run_id: uuid.UUID,
         answer_text: str,
         parsed_at: datetime = None,
+        web_search_used: bool = None,
     ):
         try:
             answer = AnswerTable(
@@ -46,6 +47,7 @@ class Answer:
                 scrape_run_id=scrape_run_id,
                 answer_text=answer_text,
                 parsed_at=parsed_at,
+                web_search_used=web_search_used,
             )
             db.add(answer)
             await db.commit()

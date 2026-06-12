@@ -4,6 +4,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import (
+ BOOLEAN,
  TEXT,
  TIMESTAMP,
  Column,
@@ -32,6 +33,8 @@ class Answer(Base):
         nullable=False,
     )
     answer_text = Column(TEXT, nullable=False)
+    # True if the AI performed a web search for this answer (cited URLs present).
+    web_search_used = Column(BOOLEAN, nullable=True)
     parsed_at = Column(TIMESTAMP(timezone=True), nullable=True)
     created_at = Column(
         TIMESTAMP(timezone=True),
