@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
-import { CheckCircle, XCircle, Clock, ChevronRight, X, Play } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle, XCircle, Clock, ChevronRight, X, Play, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { useProjectStore } from "../../../store/projectStore";
-import { useRuns, useRunDetail, useRunPrompt } from "../../../hooks/useScrapeRuns";
+import { useRuns, useRunDetail, useRunPrompt, ACTIVE_STATUSES } from "../../../hooks/useScrapeRuns";
 import { useTrackingConfigs, usePlatforms, useCountries } from "../../../hooks/useTrackingConfigs";
 import { usePrompts } from "../../../hooks/usePrompts";
 import { Skeleton } from "../ui/skeleton";
@@ -18,7 +19,9 @@ const PLATFORM_COLORS: Record<string, string> = {
 const statusIcon = (s: string) => {
   if (s === "success") return <CheckCircle size={16} color="#22c55e" />;
   if (s === "failed") return <XCircle size={16} color="#ef4444" />;
-  return <Clock size={16} color="#e8b94a" />;
+  if (s === "running") return <Clock size={16} color="#2563eb" className="animate-pulse" />;
+  if (s === "retrying") return <RefreshCw size={16} color="#ca8a04" className="animate-spin" />;
+  return <Clock size={16} color="#9a9a9a" />; // pending
 };
 
 function renderAnswer(text: string) {
@@ -32,10 +35,10 @@ function renderAnswer(text: string) {
 }
 
 const statusBg: Record<string, string> = {
-  success: "#dcfce7", failed: "#fee2e2", running: "#fef9c3", pending: "#fef9c3", retrying: "#fef9c3",
+  success: "#dcfce7", failed: "#fee2e2", running: "#dbeafe", pending: "#e5e5e5", retrying: "#fef9c3",
 };
 const statusText: Record<string, string> = {
-  success: "#16a34a", failed: "#dc2626", running: "#ca8a04", pending: "#ca8a04", retrying: "#ca8a04",
+  success: "#16a34a", failed: "#dc2626", running: "#2563eb", pending: "#6a6a6a", retrying: "#ca8a04",
 };
 
 function formatTs(iso: string) {
@@ -219,10 +222,30 @@ function NewRunModal({ projectId, onClose }: { projectId: string; onClose: () =>
 
 export function RunHistoryPage() {
   const activeProjectId = useProjectStore((s) => s.activeProjectId) ?? undefined;
+  const queryClient = useQueryClient();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [showNewRun, setShowNewRun] = useState(false);
 
   const { data: runs = [], isLoading } = useRuns(activeProjectId);
+
+  // When a run transitions from in-flight to a terminal state (detected by the
+  // polling in useRuns), toast the outcome and refresh the dashboard metrics.
+  const prevStatus = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    for (const run of runs) {
+      const prev = prevStatus.current.get(run.id);
+      if (prev && ACTIVE_STATUSES.has(prev) && !ACTIVE_STATUSES.has(run.status)) {
+        if (run.status === "SUCCESS") {
+          toast.success("Scrape completed! Dashboard updated.");
+          queryClient.invalidateQueries({ queryKey: ["projects", activeProjectId, "reports"] });
+        } else if (run.status === "FAILED") {
+          toast.error(`Scrape failed: ${run.error ?? "unknown error"}`);
+        }
+      }
+      prevStatus.current.set(run.id, run.status);
+    }
+  }, [runs, activeProjectId, queryClient]);
+
   const { data: trackingConfigs = [] } = useTrackingConfigs(activeProjectId);
   const { data: prompts = [] } = usePrompts(activeProjectId);
   const { data: platforms = [] } = usePlatforms();

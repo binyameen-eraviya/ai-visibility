@@ -3,13 +3,14 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.utils.enums import ScrapeStatus
 from backend.utils.schema.request import ScrapeRunRequest
 from backend.database.models.prompt import Prompt as PromptDB
 from backend.database.models.platform import Platform as PlatformDB
 from backend.database.models.country import Country as CountryDB
+from backend.database.models.scrape_run import ScrapeRun as ScrapeRunDB
 from backend.database.models.tracking_config import TrackingConfig as TrackingConfigDB
 from backend.interactors.helpers.project_access import verify_project_access
-from backend.services.scrape_runner import run_scrape
 from backend.utils.custom_exceptions import NotFound as DataNotFoundException
 
 
@@ -48,14 +49,19 @@ async def call(
                 country_id=country.id,
             )
 
-        # Synchronous for Milestone 2 -- blocks 15-45s. Moves to Celery in M4.
-        run = await run_scrape(
-            db,
-            project_id=project_id,
-            platform_id=platform.id,
-            platform_name=platform.name,
-            tracking_config_id=tracking_config.id,
-            prompt_text=prompt.text,
+        # Milestone 4: create the run as PENDING and hand it to Celery. The
+        # endpoint returns immediately (<1s); the worker drives the scrape and
+        # chains parse -> aggregate. The frontend polls GET /runs/{id}.
+        run = await ScrapeRunDB.create(
+            db, tracking_config_id=tracking_config.id, status=ScrapeStatus.PENDING
+        )
+
+        # Import here so the API process doesn't pull in the worker task graph at
+        # module load, and so tests can monkeypatch the enqueue cleanly.
+        from backend.workers.tasks.scrape_task import run_scrape_task
+        run_scrape_task.delay(
+            tracking_config_id=str(tracking_config.id),
+            scrape_run_id=str(run.id),
         )
         return run
     except DataNotFoundException as e:

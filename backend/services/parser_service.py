@@ -60,6 +60,9 @@ class ParseResult:
     sources_count: int = 0
     web_search_used: bool = False
     llm_used: bool = False
+    # True when the LLM was needed (sentiment / fuzzy mentions / unknown domains)
+    # but unavailable -- the parse task retries so those fields fill in later.
+    llm_unavailable: bool = False
     skipped: bool = False
     reason: str = ""
 
@@ -178,6 +181,9 @@ async def parse_answer(
             need_fuzzy=need_fuzzy, need_sentiment=need_sentiment, unknown_domains=unknown_domains,
         )
         data = await llm.generate_json(prompt)
+        if not isinstance(data, dict):
+            # LLM was needed but returned nothing (rate-limited/unavailable).
+            result.llm_unavailable = True
         if isinstance(data, dict):
             result.llm_used = True
             if need_fuzzy and isinstance(data.get("mentions"), list):

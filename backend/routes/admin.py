@@ -7,12 +7,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.database.db import get_db
 from backend.service.auth_handler import AuthHandler
 from backend.utils.schema.request import ScrapeAccountCreate
-from backend.utils.schema.response import ScrapeAccountResponse, VerificationResponse
+from backend.utils.schema.response import (
+    ScrapeAccountResponse,
+    VerificationResponse,
+    QueueStatusResponse,
+)
 from backend.interactors.admin import create_scrape_account as create_scrape_account_interactor
 from backend.interactors.admin import list_scrape_accounts as list_scrape_accounts_interactor
 from backend.interactors.admin import verify_user as verify_user_interactor
+from backend.interactors.admin import queue_status as queue_status_interactor
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+@router.get("/queue-status", response_model=QueueStatusResponse)
+async def queue_status(
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(AuthHandler.get_current_super_admin),
+):
+    return await queue_status_interactor.call(db, current_user)
 
 @router.post("/scrape-accounts", response_model=ScrapeAccountResponse)
 async def create_scrape_account(

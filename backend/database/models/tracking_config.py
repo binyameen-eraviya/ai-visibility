@@ -55,6 +55,17 @@ class TrackingConfig:
         except Exception as e:
             raise Exception(f"Error fetching tracking configs by project: {str(e)}")
 
+    async def find_active(db: AsyncSession, frequency: TrackingFrequency = None):
+        """Active configs, optionally filtered by frequency (for the scheduler)."""
+        try:
+            stmt = select(TrackingConfigTable).where(TrackingConfigTable.is_active.is_(True))
+            if frequency is not None:
+                stmt = stmt.where(TrackingConfigTable.frequency == frequency)
+            result = await db.execute(stmt)
+            return result.scalars().all()
+        except Exception as e:
+            raise Exception(f"Error fetching active tracking configs: {str(e)}")
+
     async def create(
         db: AsyncSession,
         project_id: uuid.UUID,
