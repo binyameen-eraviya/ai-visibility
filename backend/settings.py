@@ -19,7 +19,7 @@ class Settings:
         TESTING_MODE : bool = False
 
     class ENV:
-        is_development = "development" == os.getenv("ENVIRONMENT", "development")
+        is_development = "development" == os.getenv("APP_ENV", "development")
         is_production = not is_development
 
     if ENV.is_production:

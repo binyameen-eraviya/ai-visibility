@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
+# Loads the root .env when running outside Docker. Inside containers,
+# docker-compose injects the same variables via `env_file: .env`, so this
+# is a no-op there (no .env file is copied into images).
 load_dotenv()
 
 
@@ -13,19 +16,22 @@ def _require(name: str) -> str:
     if not value:
         raise RuntimeError(
             f"Required environment variable '{name}' is not set. "
-            f"See backend/.env.example and copy it to backend/.env."
+            f"Copy .env.example to .env at the repo root and fill it in."
         )
     return value
 
 
-# Inside Docker the DB host is the "db" compose service; locally it falls back
-# to localhost (ENVIRONMENT must be "production" for the in-container case).
-SERVER = "db" if os.getenv("ENVIRONMENT") == "production" else "localhost"
-
-DATABASE_URL = (
+# Single source of truth: DATABASE_URL from the root .env (host "db" inside
+# Docker). Falls back to a localhost URL built from POSTGRES_* when running
+# directly on the host without DATABASE_URL set.
+DATABASE_URL = os.getenv("DATABASE_URL") or (
     f"postgresql+asyncpg://{_require('POSTGRES_USER')}:"
-    f"{_require('POSTGRES_PASSWORD')}@{SERVER}:5432/{_require('POSTGRES_DB')}"
+    f"{_require('POSTGRES_PASSWORD')}@localhost:5432/{_require('POSTGRES_DB')}"
 )
+
+# Synchronous URL (Alembic migrations, test harness). Derived from
+# DATABASE_URL when not provided explicitly.
+SYNC_DATABASE_URL = os.getenv("SYNC_DATABASE_URL") or DATABASE_URL.replace("+asyncpg", "")
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 

@@ -26,12 +26,11 @@ def _import_all_models() -> None:
 
 _import_all_models()
 
-# Inside Docker the broker host is the "redis" service; locally it falls back
-# to localhost (same pattern as backend/database/db.py for the db host).
-BROKER_HOST = "redis" if os.getenv("ENVIRONMENT") == "production" else "localhost"
-
-BROKER_URL = os.getenv("CELERY_BROKER_URL", f"redis://{BROKER_HOST}:6379/0")
-RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", f"redis://{BROKER_HOST}:6379/1")
+# Compose injects CELERY_BROKER_URL / CELERY_RESULT_BACKEND from the root
+# .env (host "redis" inside Docker); localhost fallbacks cover running the
+# worker directly on the host.
+BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 
 celery_app = Celery(
     "ai_visibility",

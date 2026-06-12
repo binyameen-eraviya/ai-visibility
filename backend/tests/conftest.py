@@ -20,21 +20,26 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from httpx import AsyncClient, ASGITransport
 
-from backend.database.db import Base, get_db
+from sqlalchemy.engine.url import make_url
+
+from backend.database.db import Base, get_db, SYNC_DATABASE_URL
 
 
 # --- Connection URLs -------------------------------------------------------
+# Derived from the single root .env: SYNC_DATABASE_URL carries user/password/
+# host/port/db. The test database is "{db}_test" in the same Postgres.
 
-PG_USER = os.environ["POSTGRES_USER"]
-PG_PASS = os.environ["POSTGRES_PASSWORD"]
-# Mirror backend/database/db.py: "db" service host in-container, else localhost.
-PG_HOST = "db" if os.getenv("ENVIRONMENT") == "production" else "localhost"
-ADMIN_DB = os.getenv("POSTGRES_DB", "postgres")
+_url = make_url(SYNC_DATABASE_URL)
+PG_USER = _url.username
+PG_PASS = _url.password
+PG_HOST = _url.host or "localhost"
+PG_PORT = _url.port or 5432
+ADMIN_DB = _url.database or "postgres"
 TEST_DB = os.getenv("TEST_DATABASE_NAME", f"{ADMIN_DB}_test")
 
-SYNC_ADMIN_URL = f"postgresql+psycopg2://{PG_USER}:{PG_PASS}@{PG_HOST}:5432/{ADMIN_DB}"
-SYNC_TEST_URL = f"postgresql+psycopg2://{PG_USER}:{PG_PASS}@{PG_HOST}:5432/{TEST_DB}"
-ASYNC_TEST_URL = f"postgresql+asyncpg://{PG_USER}:{PG_PASS}@{PG_HOST}:5432/{TEST_DB}"
+SYNC_ADMIN_URL = f"postgresql+psycopg2://{PG_USER}:{PG_PASS}@{PG_HOST}:{PG_PORT}/{ADMIN_DB}"
+SYNC_TEST_URL = f"postgresql+psycopg2://{PG_USER}:{PG_PASS}@{PG_HOST}:{PG_PORT}/{TEST_DB}"
+ASYNC_TEST_URL = f"postgresql+asyncpg://{PG_USER}:{PG_PASS}@{PG_HOST}:{PG_PORT}/{TEST_DB}"
 
 
 def _import_all_table_models() -> None:

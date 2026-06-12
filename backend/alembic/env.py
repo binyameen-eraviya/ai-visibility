@@ -9,7 +9,7 @@ from alembic import context
 
 from backend.database.db import Base
 
-from backend.database.db import DATABASE_URL
+from backend.database.db import SYNC_DATABASE_URL
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -55,7 +55,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = DATABASE_URL
+    url = SYNC_DATABASE_URL
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -75,7 +75,7 @@ def run_migrations_online() -> None:
 
     """
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = DATABASE_URL.replace("+asyncpg", "")
+    configuration["sqlalchemy.url"] = SYNC_DATABASE_URL
     
     connectable = engine_from_config(
         configuration,
