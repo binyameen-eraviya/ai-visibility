@@ -50,6 +50,8 @@ async def call(payload: AnalyzeWebsiteRequest, current_user) -> WebsiteAnalysisR
         brand_name=suggestions.brand_name,
         brand_aliases=suggestions.brand_aliases,
         industry=suggestions.industry,
+        location=suggestions.location,
+        company_scale=suggestions.company_scale,
         competitors=[
             CompetitorSuggestion(name=c.get("name", ""), reason=c.get("reason", ""))
             for c in suggestions.competitors

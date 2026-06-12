@@ -15,6 +15,7 @@ Deliberately dependency-free HTML parsing (regex + stdlib).
 """
 
 import re
+import json
 import socket
 import asyncio
 import logging
@@ -26,8 +27,12 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Marketing pages worth a peek beyond the homepage. 404s are skipped silently.
-COMMON_PATHS = ["/about", "/pricing", "/features", "/products"]
+# Pages worth a peek beyond the homepage. 404s are skipped silently. The
+# about/contact/team pages carry the richest location + niche signals.
+COMMON_PATHS = [
+    "/about", "/about-us", "/contact", "/contact-us", "/team", "/our-team",
+    "/pricing", "/features", "/products", "/services",
+]
 _USER_AGENT = "Mozilla/5.0 (compatible; AIScopeBot/1.0; +https://aiscope.app)"
 _MAX_BODY_WORDS = 2000
 _ALLOWED_SCHEMES = {"http", "https"}
@@ -55,6 +60,8 @@ class WebsiteAnalysis:
     headings: list = field(default_factory=list)
     body_text: str = ""
     raw_pages: dict = field(default_factory=dict)
+    # Heuristic location hints (phrases / phone codes / currencies) for the LLM.
+    detected_location: str = ""
 
 
 def normalize_url(url: str) -> str:
@@ -193,6 +200,114 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _extract_supplementary(html: str) -> tuple[str, str]:
+    """Pull JSON-LD structured data + rich meta tags from raw HTML.
+
+    SPAs frequently ship these in the static shell even when the visible body
+    is JS-rendered, so this is often the only real signal for a client-rendered
+    site. Returns (extra_text, location_hint).
+    """
+    texts: list = []
+    locs: list = []
+
+    # JSON-LD blocks (Organization/LocalBusiness schema: name, description,
+    # address, areaServed). Stripped from body_text elsewhere, so harvest here.
+    for block in re.findall(
+        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        html, re.IGNORECASE | re.DOTALL,
+    ):
+        try:
+            data = json.loads(block.strip())
+        except Exception:
+            continue
+        stack = list(data) if isinstance(data, list) else [data]
+        nodes: list = []
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                graph = node.get("@graph")
+                if isinstance(graph, list):
+                    stack.extend(graph)
+                nodes.append(node)
+        for node in nodes:
+            for key in ("name", "description", "slogan"):
+                val = node.get(key)
+                if isinstance(val, str) and val.strip():
+                    texts.append(val.strip())
+            addr = node.get("address")
+            if isinstance(addr, dict):
+                # Each part may be a plain string or an object with a "name".
+                def _part(v):
+                    if isinstance(v, dict):
+                        return str(v.get("name", "")).strip()
+                    return str(v or "").strip()
+                parts = [_part(addr.get(k)) for k in ("addressLocality", "addressRegion", "addressCountry")]
+                parts = [p for p in parts if p]
+                if parts:
+                    locs.append(", ".join(parts))
+            elif isinstance(addr, str) and addr.strip():
+                locs.append(addr.strip())
+            area = node.get("areaServed")
+            if isinstance(area, str) and area.strip():
+                locs.append(area.strip())
+
+    # Rich meta tags (og:*, keywords, geo.*).
+    for prop in ("og:site_name", "og:description", "og:title", "keywords"):
+        m = re.search(
+            r'<meta[^>]+(?:property|name)=["\']' + re.escape(prop) + r'["\'][^>]+content=["\']([^"\']*)["\']',
+            html, re.IGNORECASE,
+        )
+        if m and m.group(1).strip():
+            texts.append(_clean(m.group(1)))
+    for prop in ("geo.placename", "geo.region", "og:locale"):
+        m = re.search(
+            r'<meta[^>]+(?:property|name)=["\']' + re.escape(prop) + r'["\'][^>]+content=["\']([^"\']*)["\']',
+            html, re.IGNORECASE,
+        )
+        if m and m.group(1).strip():
+            locs.append(_clean(m.group(1)))
+
+    return _clean(" ".join(dict.fromkeys(texts))), " | ".join(dict.fromkeys(locs))[:200]
+
+
+def _extract_location_signals(text: str) -> str:
+    """Pull cheap geographic hints (phrases, phone codes, currencies) for the LLM.
+
+    Not a geocoder -- just surfaces signals so the LLM can pin the company's
+    actual city/country/scale instead of guessing a global default.
+    """
+    text = text[:25000]
+    hints: list = []
+
+    # "based in / located in / headquartered in / offices in <Place>"
+    loc_re = re.compile(
+        r"\b(?:based in|located in|headquartered in|head ?office(?:\s+in)?|"
+        r"offices?\s+in|serving|proudly serving)\s+([A-Z][A-Za-z .,&'\-]{2,50})",
+        re.IGNORECASE,
+    )
+    for m in loc_re.finditer(text):
+        phrase = _clean(m.group(0))
+        if phrase and phrase not in hints:
+            hints.append(phrase)
+        if len(hints) >= 4:
+            break
+
+    # International phone prefixes like +92, +1, +44 (followed by more digits).
+    codes = sorted(set(re.findall(r"\+\d{1,3}(?=[\s().-]*\d{2})", text)))
+    if codes:
+        hints.append("Phone country code(s): " + ", ".join(codes[:5]))
+
+    # Explicit currency codes / symbols give away the market.
+    cur = sorted(set(re.findall(r"\b(PKR|USD|EUR|GBP|INR|AED|SAR|CAD|AUD|NGN|ZAR|BDT)\b", text)))
+    if cur:
+        hints.append("Currency: " + ", ".join(cur[:6]))
+    syms = sorted(set(re.findall(r"[₨£€₹]", text)))
+    if syms:
+        hints.append("Currency symbol(s): " + " ".join(syms))
+
+    return " | ".join(hints[:8])
+
+
 async def analyze_website(url: str) -> WebsiteAnalysis:
     """Fetch homepage + common pages and extract a light text signal.
 
@@ -234,11 +349,29 @@ async def analyze_website(url: str) -> WebsiteAnalysis:
                 headings.append(h)
     headings = headings[:40]
 
-    words: list = []
+    # JSON-LD + rich meta across all pages (the real signal for SPAs).
+    supp_texts: list = []
+    supp_locs: list = []
     for content in raw_pages.values():
-        words.extend(_strip_to_text(content).split())
-        if len(words) >= _MAX_BODY_WORDS:
-            break
+        s_text, s_loc = _extract_supplementary(content)
+        if s_text:
+            supp_texts.append(s_text)
+        if s_loc:
+            supp_locs.append(s_loc)
+    supp_blob = _clean(" ".join(dict.fromkeys(supp_texts)))
+
+    if not description and supp_blob:
+        description = supp_blob[:300]
+
+    # Full stripped text (across all pages) + structured signals; capped body.
+    page_texts = [_strip_to_text(content) for content in raw_pages.values()]
+    full_text = " ".join(page_texts + supp_texts)
+
+    phrase_signals = _extract_location_signals(full_text)
+    structured_loc = " | ".join(dict.fromkeys(supp_locs))
+    detected_location = " | ".join(p for p in (structured_loc, phrase_signals) if p)[:300]
+
+    words = full_text.split()
     body_text = " ".join(words[:_MAX_BODY_WORDS])
 
     return WebsiteAnalysis(
@@ -248,4 +381,5 @@ async def analyze_website(url: str) -> WebsiteAnalysis:
         headings=headings,
         body_text=body_text,
         raw_pages=raw_pages,
+        detected_location=detected_location,
     )

@@ -30,6 +30,8 @@ class WebsiteAnalysisResponse(BaseModel):
     brand_name: str
     brand_aliases: List[str] = []
     industry: str = ""
+    location: str = ""
+    company_scale: str = ""
     competitors: List[CompetitorSuggestion] = []
     suggested_prompts: List[str] = []
     prompt_topics: List[str] = []

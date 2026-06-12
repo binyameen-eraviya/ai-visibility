@@ -12,6 +12,7 @@ onboarding still works -- just without smart suggestions.
 import os
 import re
 import json
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -31,6 +32,8 @@ class BrandSuggestions:
     brand_name: str = ""
     brand_aliases: list = field(default_factory=list)
     industry: str = ""
+    location: str = ""
+    company_scale: str = ""
     # Each competitor is {"name": str, "reason": str}.
     competitors: list = field(default_factory=list)
     suggested_prompts: list = field(default_factory=list)
@@ -61,32 +64,41 @@ def _fallback(website_data: WebsiteAnalysis) -> BrandSuggestions:
 
 
 def _build_prompt(website_data: WebsiteAnalysis) -> str:
-    headings = " | ".join(website_data.headings[:25])
-    body = website_data.body_text[:3000]
-    return (
-        "Analyze this website and return a JSON object with exactly this structure:\n"
-        "{\n"
-        '  "brand_name": "the company/product name",\n'
-        '  "brand_aliases": ["list", "of", "alternate", "names", "abbreviations"],\n'
-        '  "industry": "the niche/industry this brand operates in",\n'
-        '  "competitors": [\n'
-        '    {"name": "Competitor 1", "reason": "why they compete"}\n'
-        "  ],\n"
-        '  "suggested_prompts": ["..."],\n'
-        '  "prompt_topics": ["topic1", "topic2", "topic3"]\n'
-        "}\n\n"
-        "Provide exactly 5 competitors. Generate 15-20 suggested prompts that real "
-        "users would type into ChatGPT or Perplexity when researching this type of "
-        "product/service. Make them conversational and buyer-intent focused, not "
-        "keyword-style. Include comparison prompts, 'best of' prompts, "
-        "alternative-seeking prompts, and use-case specific prompts.\n\n"
-        "Return ONLY the JSON object, no markdown fences, no commentary.\n\n"
-        "Website content:\n"
-        f"Title: {website_data.title}\n"
-        f"Description: {website_data.description}\n"
-        f"Headings: {headings}\n"
-        f"Content: {body}\n"
-    )
+    headings = " | ".join(website_data.headings[:30])
+    body = website_data.body_text[:4000]
+    location = website_data.detected_location or "Not detected - infer from website content if possible"
+    return f"""You are analyzing a company's website to help set up AI search visibility tracking. Your job is to provide accurate, contextually relevant suggestions.
+
+CRITICAL RULES:
+- Be SPECIFIC to this exact company's niche, size, and geography. Never give generic industry-wide answers.
+- For aliases: ONLY include names people genuinely use for this brand. Look at how the brand refers to itself on the website. Never invent abbreviations or acronyms unless they appear on the site. If there are no real aliases, return an empty array.
+- For competitors: Match the company's EXACT niche AND geographic market. A small software house in Pakistan competes with other software houses in Pakistan, NOT with Accenture or IBM. A global SaaS tool competes with similar global SaaS tools. Match the scale.
+- For prompts: Write them as a real human would type into ChatGPT. Include location-specific queries when the brand serves a local/regional market (e.g. "best software house in Sahiwal", "top IT companies in Pakistan for custom development").
+
+Company website: {website_data.url}
+Detected location: {location}
+
+Website content:
+Title: {website_data.title}
+Description: {website_data.description}
+Headings: {headings}
+Content: {body}
+
+Return ONLY a valid JSON object (no markdown, no backticks, no explanation) with this exact structure:
+{{
+  "brand_name": "exact brand name as displayed on the website",
+  "brand_aliases": ["only real alternate names found on the site or commonly used by people, empty array if none"],
+  "industry": "specific niche, not broad category (e.g. 'Custom Software Development' not 'IT')",
+  "location": "city, country if detectable, otherwise 'Global' or 'Unknown'",
+  "company_scale": "local/regional/national/global - based on their market reach",
+  "competitors": [
+    {{"name": "Competitor Name", "reason": "specific reason they compete in the same niche and market"}}
+  ],
+  "suggested_prompts": ["..."],
+  "prompt_topics": ["topic1", "topic2", "topic3", "topic4"]
+}}
+
+Provide exactly 5 competitors, each matched to the same niche AND geography AND scale. Generate 15-20 suggested prompts: conversational, buyer-intent (researching/comparing/about to purchase), location-aware where relevant. Mix "best [category] in [location]", "[brand] vs [competitor]", "is [brand] good for [use case]", "alternatives to [brand]", and "[category] companies that specialize in [specific service]". Never give a global/generic prompt when the brand clearly serves a local or regional market."""
 
 
 def _parse_json(text: str) -> dict:
@@ -126,6 +138,8 @@ def _coerce(data: dict, fallback: BrandSuggestions) -> BrandSuggestions:
         brand_name=str(data.get("brand_name") or fallback.brand_name).strip(),
         brand_aliases=_str_list(data.get("brand_aliases")),
         industry=str(data.get("industry") or "").strip(),
+        location=str(data.get("location") or "").strip(),
+        company_scale=str(data.get("company_scale") or "").strip(),
         competitors=competitors,
         suggested_prompts=_str_list(data.get("suggested_prompts")),
         prompt_topics=_str_list(data.get("prompt_topics")),
@@ -149,24 +163,40 @@ class GeminiLLMService(BaseLLMService):
             "contents": [{"parts": [{"text": _build_prompt(website_data)}]}],
             "generationConfig": {"temperature": 0.7, "responseMimeType": "application/json"},
         }
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                # Auth via header (not a ?key= query param) so the key never
-                # lands in a URL -- and so it can't leak through error/log text.
-                resp = await client.post(
-                    url,
-                    headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
-                    json=payload,
-                )
+        # Auth via header (not a ?key= query param) so the key never lands in a
+        # URL -- and so it can't leak through error/log text.
+        headers = {"x-goog-api-key": self.api_key, "Content-Type": "application/json"}
+
+        # Retry once on transient overload (Gemini free tier 503s under spikes)
+        # / rate-limit / timeout before giving up to the fallback.
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=12.0) as client:
+                    resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    if attempt == 0:
+                        await asyncio.sleep(1.5)
+                        continue
+                    logger.warning("llm_service: brand analysis failed (HTTP %s), using fallback", resp.status_code)
+                    return fallback
                 resp.raise_for_status()
                 body = resp.json()
-            text = body["candidates"][0]["content"]["parts"][0]["text"]
-            data = _parse_json(text)
-            return _coerce(data, fallback)
-        except httpx.HTTPStatusError as e:
-            # Log the status only -- never str(e), which contains the request URL.
-            logger.warning("llm_service: brand analysis failed (HTTP %s), using fallback", e.response.status_code)
-            return fallback
-        except Exception as e:
-            logger.warning("llm_service: brand analysis failed (%s), using fallback", type(e).__name__)
-            return fallback
+                text = body["candidates"][0]["content"]["parts"][0]["text"]
+                # Full response for prompt tuning (LOG_LEVEL=DEBUG).
+                logger.debug("llm_service: raw LLM response for %s:\n%s", website_data.url, text)
+                return _coerce(_parse_json(text), fallback)
+            except httpx.HTTPStatusError as e:
+                # 4xx (bad key/request) -- no point retrying. Log status only,
+                # never str(e), which contains the request URL.
+                logger.warning("llm_service: brand analysis failed (HTTP %s), using fallback", e.response.status_code)
+                return fallback
+            except (httpx.TimeoutException, httpx.TransportError):
+                if attempt == 0:
+                    await asyncio.sleep(1.0)
+                    continue
+                logger.warning("llm_service: brand analysis timed out, using fallback")
+                return fallback
+            except Exception as e:
+                logger.warning("llm_service: brand analysis failed (%s), using fallback", type(e).__name__)
+                return fallback
+        return fallback
