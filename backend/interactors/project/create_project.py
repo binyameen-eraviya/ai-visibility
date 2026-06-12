@@ -11,6 +11,14 @@ async def call(db: AsyncSession, payload: ProjectCreate, current_user):
             organization_id=current_user.organization_id,
             name=payload.name,
             website_url=payload.website_url,
+            description=payload.description,
+            industry=payload.industry,
+            brand_identity=payload.brand_identity,
+            products_services=payload.products_services,
+            detected_location=payload.detected_location,
+            detected_language=payload.detected_language,
+            detected_timezone=payload.detected_timezone,
+            favicon_url=payload.favicon_url,
         )
         return project
     except Exception as e:

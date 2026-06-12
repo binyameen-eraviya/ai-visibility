@@ -32,6 +32,9 @@ class Brand(Base):
     aliases = Column(MutableList.as_mutable(JSON), default=list)
     # True = the client's own brand; False = competitor.
     is_primary = Column(BOOLEAN, nullable=False, default=False, server_default=text("false"))
+    # Onboarding v2: the brand's own site, for favicon + competitor domain match.
+    website_url = Column(TEXT, nullable=True)
+    favicon_url = Column(TEXT, nullable=True)
     created_at = Column(
         TIMESTAMP(timezone=True),
         nullable=False,

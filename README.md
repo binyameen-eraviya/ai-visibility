@@ -18,10 +18,8 @@ Track how brands appear across AI answer engines (ChatGPT, Perplexity, Gemini, G
 ## Quick start
 
 ```bash
-# 1. Copy env templates (then edit secrets in backend/.env)
+# 1. Copy the single env template (then edit secrets in .env)
 cp .env.example .env
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
 
 # 2. Build + start the stack and seed reference data
 #    Windows (PowerShell):
@@ -97,35 +95,26 @@ Tests mock external services (Playwright, SMTP) — they never hit real endpoint
 
 ## Environment variables
 
-Real `.env` files are gitignored; `*.env.example` files are committed. Secrets live in `backend/.env`; the root `.env` only feeds docker-compose interpolation.
-
-### Root `.env` (compose interpolation)
+One `.env` at the repo root configures everything. The real `.env` is gitignored; `.env.example` is the committed template. Docker Compose injects it into every service via `env_file: .env`. Running the backend outside Docker, `load_dotenv()` picks up the same root file (change the `db`/`redis` hosts in the URLs to `localhost`).
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `PORT_BACKEND` | yes | Host port mapped to api:8000 (e.g. `8001`) |
-| `PORT_FRONTEND` | yes | Host port mapped to frontend:80 (e.g. `3001`) |
-| `FRONTEND_URL` | yes | Injected into api as `FE_URL` |
-| `CORS_ALLOWED_ORIGINS` | yes | Comma-separated allowed origins (injected into api) |
-| `VITE_API_URL` | yes | Baked into the frontend image at build time |
-
-### `backend/.env` (api / worker / beat / db)
-
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `ENVIRONMENT` | yes | `production` for `docker compose up` (resolves DB/Redis hosts to compose service names); `development` only when running the API directly on the host |
-| `APP_ENV` | yes | `development` auto-verifies new signups (no email). Never `development` in a real deployment |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | yes | Database credentials (also initialize the Postgres container) |
-| `JWT_SECRET_KEY` | yes | JWT signing secret — set a strong random value |
-| `JWT_ALGORITHM` | yes | e.g. `HS256` |
-| `JWT_TOKEN_EXPIRE_DAYS` | yes | Access-token lifetime (int) |
+| `DATABASE_URL` | yes | Async SQLAlchemy URL (host `db` inside Docker, `localhost` outside) |
+| `SYNC_DATABASE_URL` | no | Sync URL for Alembic/tests (derived from `DATABASE_URL` if unset) |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | yes | Initialize the Postgres container; also the fallback URL parts outside Docker |
+| `JWT_SECRET_KEY` / `JWT_ALGORITHM` | yes | JWT signing — set a strong random secret |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | yes | Access-token lifetime in minutes (`1440` = 1 day) |
 | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | yes | Redis URLs (used by worker/beat) |
+| `LLM_API_KEYS` / `LLM_API_KEY` / `LLM_MODEL` / `GEMINI_API_MODEL` / `GEMINI_SCRAPER_API_KEY` | from M3 | Gemini/LLM config — free keys at https://aistudio.google.com/apikey (comma-separate `LLM_API_KEYS` for rotation) |
 | `SCRAPE_STORAGE_DIR` | yes | Raw-capture storage root (Docker volume) |
+| `APP_ENV` | yes | `development` auto-verifies new signups (no email). Never `development` in a real deployment |
+| `DEBUG` / `LOG_LEVEL` | no | Diagnostics / log verbosity |
+| `CORS_ORIGINS` | yes | Comma-separated allowed origins (read by `main.py`) |
 | `SMTP_SERVER` / `SMTP_PORT` / `SMTP_EMAIL` / `SMTP_APP_PASSWORD` | yes* | SMTP config. Placeholders let the app boot; real values only needed to actually send email |
 | `FE_URL` | yes | Frontend URL used in email links |
 | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | yes | Seeded super-admin credentials |
-| `CORS_ALLOWED_ORIGINS` | yes | Read by `main.py`; keep consistent with the root `.env` |
-| `LLM_API_KEY` / `LLM_MODEL` | from M3 | LLM provider config for parsing |
+| `PORT_BACKEND` / `PORT_FRONTEND` | yes | Host ports compose maps to api:8000 / frontend:80 |
+| `VITE_API_URL` | yes | Baked into the frontend image at build time (compose passes it as a build arg) |
 | `TEST_DATABASE_NAME` | no | Override the test DB name (default `{POSTGRES_DB}_test`) |
 
 \* The api raises "SMTP credentials not configured" at startup if `SMTP_EMAIL`/`SMTP_APP_PASSWORD` are empty — keep the placeholders even if you don't send email.
@@ -160,10 +149,10 @@ docker compose --profile worker exec api python -c "from backend.workers.tasks i
 
 ## Troubleshooting
 
-- **Port already in use (8001 / 3001 / 5432):** change `PORT_BACKEND`/`PORT_FRONTEND` in the root `.env`, or stop the conflicting process. Postgres/Redis are not published to the host.
+- **Port already in use (8001 / 3001 / 5432):** change `PORT_BACKEND`/`PORT_FRONTEND` in `.env`, or stop the conflicting process. Postgres/Redis are not published to the host.
 - **Line endings (Windows):** `.gitattributes` enforces LF so `entrypoint.sh`/`nginx.conf` work in Linux containers. If a shell script fails with `\r` errors, ensure your editor isn't re-adding CRLF and re-checkout.
 - **Playwright Chromium download** is baked into the api/worker images at build time; a slow first `--build` is expected.
-- **`api` keeps restarting / "SMTP credentials not configured":** fill the `SMTP_*` placeholders in `backend/.env` (any non-empty values let it boot).
+- **`api` keeps restarting / "SMTP credentials not configured":** fill the `SMTP_*` placeholders in the root `.env` (any non-empty values let it boot).
 - **`worker`/`beat` didn't start:** they're behind the `worker` profile — use `docker compose --profile worker up -d` or `./scripts/dev-up.ps1 -Worker`.
 - **Clean slate:** `./scripts/reset-db.ps1` (or `docker compose down -v && docker compose up -d`) wipes volumes and re-seeds.
 

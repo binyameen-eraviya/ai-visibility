@@ -17,6 +17,7 @@ import {
 import { useProjects } from "../../../hooks/useProjects";
 import { useProjectStore } from "../../../store/projectStore";
 import { useAuthStore } from "../../../store/authStore";
+import { BrandIcon } from "../../../utils/favicon";
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
@@ -97,14 +98,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       {/* Project Switcher */}
       <div className="px-3 py-3 border-b" style={{ borderColor: "#e5e5e5" }}>
         {collapsed ? (
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center mx-auto cursor-pointer hover:bg-[#ebe6d6] transition-colors"
-            style={{ background: "#f5f0e0" }}
-            title={activeProject?.name ?? "No project"}
-          >
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#0a0a0a" }}>
-              {activeProject?.name?.charAt(0) ?? "?"}
-            </span>
+          <div className="mx-auto w-fit cursor-pointer" title={activeProject?.name ?? "No project"}>
+            <BrandIcon
+              name={activeProject?.name ?? "?"}
+              faviconUrl={activeProject?.favicon_url ?? undefined}
+              domain={activeProject?.website_url ?? undefined}
+              size={32}
+              radius={8}
+            />
           </div>
         ) : (
           <div className="relative">
@@ -113,14 +114,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[#ebe6d6] transition-colors text-left"
               style={{ background: "#f5f0e0" }}
             >
-              <div
-                className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
-                style={{ background: "#1a3a3a" }}
-              >
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#fff" }}>
-                  {activeProject?.name?.charAt(0) ?? "?"}
-                </span>
-              </div>
+              <BrandIcon
+                name={activeProject?.name ?? "?"}
+                faviconUrl={activeProject?.favicon_url ?? undefined}
+                domain={activeProject?.website_url ?? undefined}
+                size={24}
+                radius={6}
+              />
               <span style={{ fontSize: 13, fontWeight: 500, color: "#0a0a0a" }} className="flex-1 truncate">
                 {activeProject?.name ?? "No project"}
               </span>
@@ -137,14 +137,13 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     onClick={() => { setActiveProjectId(p.id); setProjectOpen(false); }}
                     className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#f5f0e0] transition-colors text-left"
                   >
-                    <div
-                      className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
-                      style={{ background: p.id === activeProject?.id ? "#1a3a3a" : "#ebe6d6" }}
-                    >
-                      <span style={{ fontSize: 9, fontWeight: 700, color: p.id === activeProject?.id ? "#fff" : "#0a0a0a" }}>
-                        {p.name.charAt(0)}
-                      </span>
-                    </div>
+                    <BrandIcon
+                      name={p.name}
+                      faviconUrl={p.favicon_url ?? undefined}
+                      domain={p.website_url ?? undefined}
+                      size={20}
+                      radius={5}
+                    />
                     <span style={{ fontSize: 13, color: "#0a0a0a" }}>{p.name}</span>
                   </button>
                 ))}

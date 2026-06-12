@@ -14,6 +14,7 @@ import {
 } from "../../../hooks/useTrackingConfigs";
 import { usePrompts } from "../../../hooks/usePrompts";
 import { Skeleton } from "../ui/skeleton";
+import { BrandIcon } from "../../../utils/favicon";
 
 const inputStyle = {
   width: "100%",
@@ -257,14 +258,15 @@ export function BrandsPage() {
           <div key={brand.id} className="rounded-2xl p-5" style={{ background: "#f5f0e0", border: "1px solid #e5e5e5" }}>
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
-                <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: brand.is_primary ? "#1a3a3a" : "#ebe6d6" }}
-                >
-                  <span style={{ fontSize: 14, fontWeight: 700, color: brand.is_primary ? "#fff" : "#6a6a6a" }}>
-                    {brand.name.charAt(0)}
-                  </span>
-                </div>
+                <BrandIcon
+                  name={brand.name}
+                  faviconUrl={brand.favicon_url ?? undefined}
+                  domain={brand.website_url ?? undefined}
+                  size={36}
+                  radius={10}
+                  bg={brand.is_primary ? "#1a3a3a" : "#ebe6d6"}
+                  color={brand.is_primary ? "#fff" : "#6a6a6a"}
+                />
                 <div>
                   <div className="flex items-center gap-2">
                     <span style={{ fontSize: 15, fontWeight: 600, color: "#0a0a0a" }}>{brand.name}</span>

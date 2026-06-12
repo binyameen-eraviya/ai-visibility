@@ -36,7 +36,13 @@ class Project:
         except Exception as e:
             raise Exception(f"Error fetching projects by organization: {str(e)}")
 
-    async def create(db: AsyncSession, organization_id: uuid.UUID, name: str, website_url: str = None):
+    # Onboarding-v2 profile fields, settable on create and update.
+    _PROFILE_FIELDS = (
+        "description", "industry", "brand_identity", "products_services",
+        "detected_location", "detected_language", "detected_timezone", "favicon_url",
+    )
+
+    async def create(db: AsyncSession, organization_id: uuid.UUID, name: str, website_url: str = None, **profile):
         try:
             project = ProjectTable(
                 id=uuid.uuid4(),
@@ -44,6 +50,9 @@ class Project:
                 name=name,
                 website_url=website_url,
             )
+            for field in Project._PROFILE_FIELDS:
+                if profile.get(field) is not None:
+                    setattr(project, field, profile[field])
             db.add(project)
             await db.commit()
             await db.refresh(project)
@@ -52,7 +61,7 @@ class Project:
             await db.rollback()
             raise Exception(f"Error creating project: {str(e)}")
 
-    async def update(db: AsyncSession, project_id: uuid.UUID, name: str = None, website_url: str = None):
+    async def update(db: AsyncSession, project_id: uuid.UUID, name: str = None, website_url: str = None, **profile):
         try:
             project = await Project.find_by_id(db, project_id)
 
@@ -60,6 +69,9 @@ class Project:
                 project.name = name
             if website_url is not None:
                 project.website_url = website_url
+            for field in Project._PROFILE_FIELDS:
+                if profile.get(field) is not None:
+                    setattr(project, field, profile[field])
             project.updated_at = datetime.now(timezone.utc)
             await db.commit()
             await db.refresh(project)

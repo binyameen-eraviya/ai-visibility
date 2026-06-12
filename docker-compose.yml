@@ -3,8 +3,11 @@ services:
   db:
     image: postgres:16
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
+    env_file: .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,11 +30,7 @@ services:
   api:
     build: .
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
-    environment:
-      FE_URL: ${FRONTEND_URL}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+    env_file: .env
     volumes:
       - ./backend:/app/backend
       - ./main.py:/app/main.py
@@ -59,8 +58,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
+    env_file: .env
     entrypoint: []
     # Behind the "worker" profile so `docker compose --profile worker up` runs
     # the async pipeline (Milestone 4). concurrency=4 matches celery_app config.
@@ -82,8 +80,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
+    env_file: .env
     entrypoint: []
     profiles: ["worker"]
     command: celery -A backend.workers.celery_app beat --loglevel=info
@@ -99,8 +96,9 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: ${VITE_API_URL}
+        - VITE_API_URL=${VITE_API_URL}
     restart: unless-stopped
+    env_file: .env
     ports:
       - "${PORT_FRONTEND}:80"
     depends_on:

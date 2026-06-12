@@ -22,6 +22,8 @@ async def call(db: AsyncSession, project_id: uuid.UUID, brand_id: uuid.UUID, pay
             name=payload.name,
             aliases=payload.aliases,
             is_primary=payload.is_primary,
+            website_url=payload.website_url,
+            favicon_url=payload.favicon_url,
         )
         return brand
     except DataNotFoundException:

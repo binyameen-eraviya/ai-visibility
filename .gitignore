@@ -43,16 +43,11 @@ yarn-error.log*
 pnpm-debug.log*
 
 # ───────────────────────── Env & secrets (CRITICAL) ────────
-# Ignore real env files everywhere...
+# Single root .env (real, gitignored); the committed template stays.
 .env
-.env.*
-**/.env
-**/.env.*
+!.env.example
 secrets.*
 .envrc
-# ...but ALWAYS keep the committed templates.
-!.env.example
-!**/.env.example
 
 # ───────────────────────── Scrape storage ─────────────────
 # Raw captured answers/screenshots live on a Docker volume; if mounted

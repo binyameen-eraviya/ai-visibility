@@ -7,6 +7,8 @@ export interface Brand {
   name: string;
   aliases: string[];
   is_primary: boolean;
+  website_url?: string | null;
+  favicon_url?: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -15,6 +17,8 @@ export interface BrandCreatePayload {
   name: string;
   aliases?: string[];
   is_primary?: boolean;
+  website_url?: string;
+  favicon_url?: string;
 }
 
 export function useBrands(projectId?: string) {

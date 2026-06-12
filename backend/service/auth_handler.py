@@ -25,7 +25,7 @@ class AuthHandler:
 
     def generate_access_token(data: dict) -> str:
         to_encode = data.copy()
-        expire = datetime.now(timezone.utc) + timedelta(days=int(Constants.TOKEN_EXPIRE_DAYS))
+        expire = datetime.now(timezone.utc) + timedelta(minutes=int(Constants.ACCESS_TOKEN_EXPIRE_MINUTES))
 
         to_encode.update({"exp": expire})
 
