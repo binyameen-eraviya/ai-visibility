@@ -7,11 +7,12 @@ runner changes.
 
 from backend.workers.scrapers.base_adapter import BasePlatformAdapter
 from backend.workers.scrapers.perplexity import PerplexityAdapter
+from backend.workers.scrapers.gemini_api import GeminiAPIAdapter
 
 ADAPTER_REGISTRY = {
     "perplexity": PerplexityAdapter,
+    "gemini": GeminiAPIAdapter,         # API-based, fast and reliable
     # "chatgpt": ChatGPTAdapter,        # Milestone 5
-    # "gemini": GeminiAdapter,          # Milestone 5
     # "ai_overview": AIOverviewAdapter, # Milestone 5
     # "copilot": CopilotAdapter,        # Milestone 5
 }
