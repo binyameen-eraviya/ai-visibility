@@ -205,6 +205,14 @@ class SourceMetricResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class QueueStatusResponse(BaseModel):
+    workers: int
+    worker_names: List[str] = []
+    active_tasks: int
+    reserved_tasks: int
+    scheduled_tasks: int
+    queues: dict = {}
+
 class GapAnalysisResponse(BaseModel):
     domain: str
     domain_type: SourceType = SourceType.OTHER
