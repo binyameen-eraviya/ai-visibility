@@ -22,6 +22,20 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class CompetitorSuggestion(BaseModel):
+    name: str
+    reason: str = ""
+
+class WebsiteAnalysisResponse(BaseModel):
+    brand_name: str
+    brand_aliases: List[str] = []
+    industry: str = ""
+    location: str = ""
+    company_scale: str = ""
+    competitors: List[CompetitorSuggestion] = []
+    suggested_prompts: List[str] = []
+    prompt_topics: List[str] = []
+
 class LoginResponse(BaseModel):
     user: UserResponse
     access_token: str

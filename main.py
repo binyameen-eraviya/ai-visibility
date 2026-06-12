@@ -17,6 +17,7 @@ from backend.routes import (
     scrape,
     admin,
     health,
+    analyze,
 )
 
 
@@ -55,6 +56,7 @@ app.include_router(reference.router)
 app.include_router(scrape.router)
 app.include_router(admin.router)
 app.include_router(health.router)
+app.include_router(analyze.router)
 
 # Run.
 if __name__ == "__main__":
