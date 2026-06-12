@@ -30,11 +30,21 @@ class PasswordReset(BaseModel):
 class AnalyzeWebsiteRequest(BaseModel):
     url: str
 
-class ProjectCreate(BaseModel):
+class ProjectProfileFields(BaseModel):
+    description: Optional[str] = None
+    industry: Optional[str] = None
+    brand_identity: Optional[List[str]] = None
+    products_services: Optional[List[str]] = None
+    detected_location: Optional[str] = None
+    detected_language: Optional[str] = None
+    detected_timezone: Optional[str] = None
+    favicon_url: Optional[str] = None
+
+class ProjectCreate(ProjectProfileFields):
     name: str
     website_url: Optional[str] = None
 
-class ProjectUpdate(BaseModel):
+class ProjectUpdate(ProjectProfileFields):
     name: Optional[str] = None
     website_url: Optional[str] = None
 
@@ -42,11 +52,15 @@ class BrandCreate(BaseModel):
     name: str
     aliases: List[str] = []
     is_primary: bool = False
+    website_url: Optional[str] = None
+    favicon_url: Optional[str] = None
 
 class BrandUpdate(BaseModel):
     name: Optional[str] = None
     aliases: Optional[List[str]] = None
     is_primary: Optional[bool] = None
+    website_url: Optional[str] = None
+    favicon_url: Optional[str] = None
 
 class PromptCreate(BaseModel):
     text: str

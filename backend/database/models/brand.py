@@ -42,6 +42,8 @@ class Brand:
         name: str,
         aliases: list = None,
         is_primary: bool = False,
+        website_url: str = None,
+        favicon_url: str = None,
     ):
         try:
             brand = BrandTable(
@@ -50,6 +52,8 @@ class Brand:
                 name=name,
                 aliases=aliases or [],
                 is_primary=is_primary,
+                website_url=website_url,
+                favicon_url=favicon_url,
             )
             db.add(brand)
             await db.commit()
@@ -65,6 +69,8 @@ class Brand:
         name: str = None,
         aliases: list = None,
         is_primary: bool = None,
+        website_url: str = None,
+        favicon_url: str = None,
     ):
         try:
             brand = await Brand.find_by_id(db, brand_id)
@@ -75,6 +81,10 @@ class Brand:
                 brand.aliases = aliases
             if is_primary is not None:
                 brand.is_primary = is_primary
+            if website_url is not None:
+                brand.website_url = website_url
+            if favicon_url is not None:
+                brand.favicon_url = favicon_url
             brand.updated_at = datetime.now(timezone.utc)
             await db.commit()
             await db.refresh(brand)

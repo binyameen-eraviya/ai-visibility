@@ -90,6 +90,14 @@ class ProjectResponse(BaseModel):
     organization_id: uuid.UUID
     name: str
     website_url: Optional[str]
+    description: Optional[str] = None
+    industry: Optional[str] = None
+    brand_identity: Optional[List[str]] = None
+    products_services: Optional[List[str]] = None
+    detected_location: Optional[str] = None
+    detected_language: Optional[str] = None
+    detected_timezone: Optional[str] = None
+    favicon_url: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime]
 
@@ -102,6 +110,8 @@ class BrandResponse(BaseModel):
     name: str
     aliases: List[str]
     is_primary: bool
+    website_url: Optional[str] = None
+    favicon_url: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime]
 
