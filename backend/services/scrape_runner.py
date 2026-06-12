@@ -1,79 +1,80 @@
-"""Scrape orchestration -- the seam between request and worker.
+"""Scrape execution -- drives one already-created scrape_run to completion.
 
-`run_scrape` owns the full lifecycle of one scrape: create the run row, check out
-an account (if any), drive the adapter, persist the capture, and record the final
-status. It is deliberately decoupled from the request handler so that Milestone 4
-can call the exact same function from a Celery task -- the endpoint just awaits it
-synchronously today.
+Milestone 4 moved scraping into Celery. The flow is now:
+  1. The caller (manual endpoint or daily scheduler) creates a `scrape_runs` row
+     with status PENDING and enqueues `run_scrape_task(tracking_config_id, run_id)`.
+  2. The task calls `execute_scrape_run(db, run_id)` here: it drives the adapter,
+     stores the capture, and sets SUCCESS / FAILED / RETRYING.
+  3. On SUCCESS the task chains parse -> aggregate (separate tasks).
 
-Scraping failures do NOT raise out of here: they are recorded as a FAILED run and
-returned, so a manual trigger always gets a run record back.
+`execute_scrape_run` does NOT create the run row and does NOT parse/aggregate --
+those are the task's responsibility. It returns a ScrapeOutcome telling the task
+whether to chain onward, retry, or give up. It never raises for an adapter
+failure (the failure is recorded on the run); it only raises for truly
+unexpected internal errors.
 """
 
 import time
 import uuid
 import logging
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timezone, date as date_type
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.utils.enums import ScrapeStatus
 from backend.database.models.scrape_run import ScrapeRun as ScrapeRunDB
+from backend.database.models.tracking_config import TrackingConfig as TrackingConfigDB
+from backend.database.models.platform import Platform as PlatformDB
+from backend.database.models.prompt import Prompt as PromptDB
 from backend.services.storage import BaseStorageService, LocalStorageService
-from backend.services.parser_service import parse_answer
-from backend.services.aggregator_service import aggregate_daily
 from backend.workers.pool.account_pool import AccountPool, NoAccountAvailable
 from backend.workers.scrapers.registry import get_adapter
+from backend.workers.scrapers.exceptions import (
+    ScraperTimeout,
+    CaptchaDetected,
+    RateLimited,
+    UnexpectedLayout,
+)
 
 logger = logging.getLogger(__name__)
 
 
-async def _parse_and_aggregate(db: AsyncSession, run, project_id: uuid.UUID) -> None:
-    """Parse a successful run and roll its day's metrics up.
-
-    Synchronous here (Milestone 3); Milestone 4 moves this to Celery tasks.
-    Never raises -- a parse/aggregate failure must not fail the scrape itself.
-    """
-    try:
-        result = await parse_answer(run.id, db)
-        if result.skipped:
-            logger.info("scrape run %s: parse skipped (%s)", run.id, result.reason)
-            return
-        day = (run.scraped_at or datetime.now(timezone.utc)).date()
-        await aggregate_daily(db, project_id, day)
-    except Exception as e:
-        logger.warning("scrape run %s: parse/aggregate failed: %s", run.id, e)
+@dataclass
+class ScrapeOutcome:
+    status: str                 # "SUCCESS" | "FAILED" | "RETRY"
+    project_id: uuid.UUID = None
+    scraped_date: date_type = None
+    error: str = None
+    retryable: bool = False
 
 
-async def run_scrape(
+async def execute_scrape_run(
     db: AsyncSession,
-    *,
-    project_id: uuid.UUID,
-    platform_id: uuid.UUID,
-    platform_name: str,
-    tracking_config_id: uuid.UUID,
-    prompt_text: str,
+    scrape_run_id: uuid.UUID,
     storage: BaseStorageService = None,
-):
-    """Run one prompt on one platform end to end; return the scrape_run row.
-
-    The same callable backs both the manual endpoint (awaited inline) and the
-    future Celery task.
-    """
+) -> ScrapeOutcome:
+    """Drive an existing PENDING run to SUCCESS / FAILED / RETRYING."""
     storage = storage or LocalStorageService()
     pool = AccountPool(db)
 
-    run = await ScrapeRunDB.create(db, tracking_config_id=tracking_config_id, status=ScrapeStatus.PENDING)
-    run_id = run.id
+    run = await ScrapeRunDB.find_by_id(db, scrape_run_id)
+    tracking_config = await TrackingConfigDB.find_by_id(db, run.tracking_config_id)
+    project_id = tracking_config.project_id
+    platform = await PlatformDB.find_by_id(db, tracking_config.platform_id)
+    prompt = await PromptDB.find_by_id(db, tracking_config.prompt_id)
+    platform_id = platform.id
+    platform_name = platform.name
+    prompt_text = prompt.text
+
     logger.info(
         "scrape run %s starting: platform=%s tracking_config=%s",
-        run_id, platform_name, tracking_config_id,
+        scrape_run_id, platform_name, run.tracking_config_id,
     )
 
-    # Try to check out an account. Perplexity answers unauthenticated, so an
-    # empty pool is fine -- we just proceed without one.
-    # NOTE: pool.checkout() rolls back the session on NoAccountAvailable, which
-    # expires `run` -- capture run_id above before that can happen.
+    # Best-effort account checkout. Perplexity answers unauthenticated, so an
+    # empty pool is fine. NOTE: checkout() rolls back on NoAccountAvailable --
+    # everything we need from run/tracking_config/platform is already captured.
     account = None
     account_payload = None
     try:
@@ -83,8 +84,7 @@ async def run_scrape(
         account = None
 
     await ScrapeRunDB.update(
-        db,
-        run_id,
+        db, scrape_run_id,
         status=ScrapeStatus.RUNNING,
         account_id=(account.id if account else None),
     )
@@ -103,42 +103,60 @@ async def run_scrape(
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "metadata": raw.metadata,
         }
-        raw_path = await storage.save_raw(project_id, run_id, data)
-
+        raw_path = await storage.save_raw(project_id, scrape_run_id, data)
         screenshot_path = None
         if raw.screenshot:
-            screenshot_path = await storage.save_screenshot(project_id, run_id, raw.screenshot)
+            screenshot_path = await storage.save_screenshot(project_id, scrape_run_id, raw.screenshot)
 
-        run = await ScrapeRunDB.update(
-            db,
-            run_id,
+        scraped_at = datetime.now(timezone.utc)
+        await ScrapeRunDB.update(
+            db, scrape_run_id,
             status=ScrapeStatus.SUCCESS,
             raw_storage_path=raw_path,
             screenshot_path=screenshot_path,
             duration_ms=duration_ms,
-            scraped_at=datetime.now(timezone.utc),
+            scraped_at=scraped_at,
         )
-
-        logger.info("scrape run %s succeeded in %dms", run_id, duration_ms)
+        logger.info("scrape run %s succeeded in %dms", scrape_run_id, duration_ms)
         if account:
             await pool.release(account.id)
+        return ScrapeOutcome("SUCCESS", project_id=project_id, scraped_date=scraped_at.date())
 
-        # Milestone 3: parse the capture into structured analytics and roll up
-        # the day's metrics. Best-effort -- failures don't fail the scrape.
-        await _parse_and_aggregate(db, run, project_id)
-        return run
-    except Exception as e:
+    except (ScraperTimeout, RateLimited) as e:
+        # Transient: cool the account down and let the task retry.
         duration_ms = int((time.monotonic() - started) * 1000)
-        logger.error("scrape run %s failed in %dms: %s", run_id, duration_ms, e)
-        run = await ScrapeRunDB.update(
-            db,
-            run_id,
-            status=ScrapeStatus.FAILED,
-            error=str(e),
-            duration_ms=duration_ms,
-        )
+        logger.warning("scrape run %s transient failure in %dms: %s", scrape_run_id, duration_ms, e)
+        await ScrapeRunDB.update(db, scrape_run_id, status=ScrapeStatus.RETRYING, error=str(e), duration_ms=duration_ms)
         if account:
-            # Count the failure against the account, then cool it down.
             await pool.report_failure(account.id)
             await pool.release(account.id)
-        return run
+        return ScrapeOutcome("RETRY", project_id=project_id, error=str(e), retryable=True)
+
+    except CaptchaDetected as e:
+        # Permanent for this account: ban it, do not retry.
+        duration_ms = int((time.monotonic() - started) * 1000)
+        logger.error("scrape run %s captcha/ban in %dms: %s", scrape_run_id, duration_ms, e)
+        await ScrapeRunDB.update(db, scrape_run_id, status=ScrapeStatus.FAILED, error=str(e), duration_ms=duration_ms)
+        if account:
+            await pool.report_failure(account.id, ban=True)
+            await pool.release(account.id)
+        return ScrapeOutcome("FAILED", project_id=project_id, error=str(e), retryable=False)
+
+    except Exception as e:
+        # UnexpectedLayout, missing adapter, or any other error: record FAILED,
+        # don't retry (avoid hammering a broken target / looping on a bug).
+        duration_ms = int((time.monotonic() - started) * 1000)
+        logger.error("scrape run %s failed in %dms: %s", scrape_run_id, duration_ms, e)
+        await ScrapeRunDB.update(db, scrape_run_id, status=ScrapeStatus.FAILED, error=str(e), duration_ms=duration_ms)
+        if account:
+            await pool.report_failure(account.id)
+            await pool.release(account.id)
+        return ScrapeOutcome("FAILED", project_id=project_id, error=str(e), retryable=False)
+
+
+async def mark_run_failed(db: AsyncSession, scrape_run_id: uuid.UUID, error: str) -> None:
+    """Force a run to FAILED (used when retries are exhausted)."""
+    try:
+        await ScrapeRunDB.update(db, scrape_run_id, status=ScrapeStatus.FAILED, error=error)
+    except Exception as e:
+        logger.warning("could not mark run %s failed: %s", scrape_run_id, e)

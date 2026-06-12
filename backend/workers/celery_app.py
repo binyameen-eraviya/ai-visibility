@@ -18,6 +18,9 @@ celery_app = Celery(
     backend=RESULT_BACKEND,
     include=[
         "backend.workers.tasks",
+        "backend.workers.tasks.scrape_task",
+        "backend.workers.tasks.parse_task",
+        "backend.workers.tasks.aggregate_task",
     ],
 )
 
@@ -25,10 +28,16 @@ celery_app.conf.update(
     # Queues: scraping, parsing, and aggregation scale independently.
     task_default_queue="celery",
     task_routes={
-        "backend.workers.scrapers.*": {"queue": "scrape"},
-        "backend.workers.parsers.*": {"queue": "parse"},
-        "backend.workers.aggregator.*": {"queue": "aggregate"},
+        # Browser scraping is heavy and platforms rate-limit aggressively, so the
+        # scrape queue is throttled hard. Parse is lighter (LLM + DB); aggregate
+        # is just SQL. (rate_limit is also set on each task decorator.)
+        "backend.workers.tasks.scrape_task.*": {"queue": "scrape", "rate_limit": "3/m"},
+        "backend.workers.tasks.parse_task.*": {"queue": "parse", "rate_limit": "10/m"},
+        "backend.workers.tasks.aggregate_task.*": {"queue": "aggregate"},
     },
+    # Max concurrent tasks per worker, and a global ceiling.
+    worker_concurrency=4,
+    task_default_rate_limit="10/m",
     # Scrape jobs are long and failure-prone: ack late so a crashed worker
     # does not silently drop a job.
     task_acks_late=True,
@@ -37,6 +46,5 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
-# Beat schedule: populated in Milestone 4 (daily scheduler reads
-# tracking_configs and enqueues scrape jobs spread across hours).
-celery_app.conf.beat_schedule = {}
+# Beat schedule is defined in backend/workers/tasks/scheduler_task.py (registered
+# there to keep the schedule next to the tasks it runs).
