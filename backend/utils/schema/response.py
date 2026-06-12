@@ -30,17 +30,31 @@ class UserResponse(BaseModel):
 
 class CompetitorSuggestion(BaseModel):
     name: str
+    domain: str = ""
     reason: str = ""
+
+class PromptSuggestion(BaseModel):
+    topic: str = ""
+    text: str
 
 class WebsiteAnalysisResponse(BaseModel):
     brand_name: str
     brand_aliases: List[str] = []
+    brand_description: str = ""
     industry: str = ""
     location: str = ""
     company_scale: str = ""
+    brand_identity: List[str] = []
+    products_services: List[str] = []
     competitors: List[CompetitorSuggestion] = []
-    suggested_prompts: List[str] = []
-    prompt_topics: List[str] = []
+    suggested_topics: List[str] = []
+    suggested_prompts: List[PromptSuggestion] = []
+    favicon_url: str = ""
+
+class DetectLocationResponse(BaseModel):
+    ip: Optional[str] = None
+    country_code: Optional[str] = None
+    country_name: Optional[str] = None
 
 class LoginResponse(BaseModel):
     user: UserResponse

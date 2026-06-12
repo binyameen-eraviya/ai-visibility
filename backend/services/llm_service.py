@@ -34,13 +34,19 @@ _PLACEHOLDER_KEYS = {"", "your-api-key-here", "change-me"}
 class BrandSuggestions:
     brand_name: str = ""
     brand_aliases: list = field(default_factory=list)
+    brand_description: str = ""
     industry: str = ""
     location: str = ""
     company_scale: str = ""
-    # Each competitor is {"name": str, "reason": str}.
+    # Adjectives describing the brand, and specific offerings.
+    brand_identity: list = field(default_factory=list)
+    products_services: list = field(default_factory=list)
+    # Each competitor is {"name": str, "domain": str, "reason": str}.
     competitors: list = field(default_factory=list)
+    # 8-10 topics to choose from.
+    suggested_topics: list = field(default_factory=list)
+    # Each prompt is {"topic": str, "text": str}.
     suggested_prompts: list = field(default_factory=list)
-    prompt_topics: list = field(default_factory=list)
 
 
 class BaseLLMService(ABC):
@@ -91,17 +97,22 @@ Return ONLY a valid JSON object (no markdown, no backticks, no explanation) with
 {{
   "brand_name": "exact brand name as displayed on the website",
   "brand_aliases": ["only real alternate names found on the site or commonly used by people, empty array if none"],
+  "brand_description": "1-2 sentence description of what this brand does and who it's for",
   "industry": "specific niche, not broad category (e.g. 'Custom Software Development' not 'IT')",
   "location": "city, country if detectable, otherwise 'Global' or 'Unknown'",
   "company_scale": "local/regional/national/global - based on their market reach",
+  "brand_identity": ["5 adjectives that describe the brand, e.g. Reliable, Scalable, Developer-focused"],
+  "products_services": ["specific products or services the brand offers, e.g. Payment Processing, Subscription Billing"],
   "competitors": [
-    {{"name": "Competitor Name", "reason": "specific reason they compete in the same niche and market"}}
+    {{"name": "Competitor Name", "domain": "competitor.com", "reason": "specific reason they compete in the same niche and market"}}
   ],
-  "suggested_prompts": ["..."],
-  "prompt_topics": ["topic1", "topic2", "topic3", "topic4"]
+  "suggested_topics": ["8-10 distinct themes a buyer would research about this category, e.g. Online Payments, Payment Security, Subscription Billing"],
+  "suggested_prompts": [
+    {{"topic": "one of the suggested_topics above", "text": "the prompt a real human would type"}}
+  ]
 }}
 
-Provide exactly 5 competitors, each matched to the same niche AND geography AND scale. Generate 15-20 suggested prompts: conversational, buyer-intent (researching/comparing/about to purchase), location-aware where relevant. Mix "best [category] in [location]", "[brand] vs [competitor]", "is [brand] good for [use case]", "alternatives to [brand]", and "[category] companies that specialize in [specific service]". Never give a global/generic prompt when the brand clearly serves a local or regional market."""
+Provide exactly 5 competitors, each matched to the same niche AND geography AND scale, each with its real website domain (bare domain, no scheme). Provide 8-10 suggested_topics. Generate 15-20 suggested_prompts, each tagged with one of the suggested_topics: conversational, buyer-intent (researching/comparing/about to purchase), location-aware where relevant. Mix "best [category] in [location]", "[brand] vs [competitor]", "is [brand] good for [use case]", "alternatives to [brand]", and "[category] companies that specialize in [specific service]". Never give a global/generic prompt when the brand clearly serves a local or regional market."""
 
 
 def _parse_json(text: str) -> dict:
@@ -130,22 +141,47 @@ def _coerce(data: dict, fallback: BrandSuggestions) -> BrandSuggestions:
             return []
         return [str(v).strip() for v in value if str(v).strip()]
 
+    def _domain(value) -> str:
+        # Accept a bare domain or a full URL; return the bare host, no scheme/path.
+        v = str(value or "").strip().lower()
+        v = re.sub(r"^https?://", "", v).split("/")[0]
+        if v.startswith("www."):
+            v = v[4:]
+        return v
+
     competitors = []
     for c in data.get("competitors", []) if isinstance(data.get("competitors"), list) else []:
         if isinstance(c, dict) and c.get("name"):
-            competitors.append({"name": str(c["name"]).strip(), "reason": str(c.get("reason", "")).strip()})
+            competitors.append({
+                "name": str(c["name"]).strip(),
+                "domain": _domain(c.get("domain")),
+                "reason": str(c.get("reason", "")).strip(),
+            })
         elif isinstance(c, str) and c.strip():
-            competitors.append({"name": c.strip(), "reason": ""})
+            competitors.append({"name": c.strip(), "domain": "", "reason": ""})
+
+    suggested_topics = _str_list(data.get("suggested_topics"))
+
+    prompts = []
+    raw_prompts = data.get("suggested_prompts")
+    for p in raw_prompts if isinstance(raw_prompts, list) else []:
+        if isinstance(p, dict) and p.get("text"):
+            prompts.append({"topic": str(p.get("topic", "")).strip(), "text": str(p["text"]).strip()})
+        elif isinstance(p, str) and p.strip():
+            prompts.append({"topic": "", "text": p.strip()})
 
     return BrandSuggestions(
         brand_name=str(data.get("brand_name") or fallback.brand_name).strip(),
         brand_aliases=_str_list(data.get("brand_aliases")),
+        brand_description=str(data.get("brand_description") or "").strip(),
         industry=str(data.get("industry") or "").strip(),
         location=str(data.get("location") or "").strip(),
         company_scale=str(data.get("company_scale") or "").strip(),
+        brand_identity=_str_list(data.get("brand_identity")),
+        products_services=_str_list(data.get("products_services")),
         competitors=competitors,
-        suggested_prompts=_str_list(data.get("suggested_prompts")),
-        prompt_topics=_str_list(data.get("prompt_topics")),
+        suggested_topics=suggested_topics,
+        suggested_prompts=prompts,
     )
 
 
