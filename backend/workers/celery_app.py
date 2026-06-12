@@ -1,6 +1,7 @@
 import os
 
 from celery import Celery
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,6 +22,7 @@ celery_app = Celery(
         "backend.workers.tasks.scrape_task",
         "backend.workers.tasks.parse_task",
         "backend.workers.tasks.aggregate_task",
+        "backend.workers.tasks.scheduler_task",
     ],
 )
 
@@ -34,6 +36,7 @@ celery_app.conf.update(
         "backend.workers.tasks.scrape_task.*": {"queue": "scrape", "rate_limit": "3/m"},
         "backend.workers.tasks.parse_task.*": {"queue": "parse", "rate_limit": "10/m"},
         "backend.workers.tasks.aggregate_task.*": {"queue": "aggregate"},
+        "backend.workers.tasks.scheduler_task.*": {"queue": "aggregate"},
     },
     # Max concurrent tasks per worker, and a global ceiling.
     worker_concurrency=4,
@@ -46,5 +49,18 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
-# Beat schedule is defined in backend/workers/tasks/scheduler_task.py (registered
-# there to keep the schedule next to the tasks it runs).
+# Beat schedule (tasks live in backend/workers/tasks/scheduler_task.py).
+celery_app.conf.beat_schedule = {
+    "schedule-daily-runs": {
+        "task": "backend.workers.tasks.scheduler_task.schedule_daily_runs",
+        "schedule": crontab(hour=2, minute=0),  # 2 AM UTC daily
+    },
+    "reset-account-quotas": {
+        "task": "backend.workers.tasks.scheduler_task.reset_account_quotas",
+        "schedule": crontab(hour=0, minute=0),  # midnight UTC daily
+    },
+    "cleanup-old-runs": {
+        "task": "backend.workers.tasks.scheduler_task.cleanup_old_runs",
+        "schedule": crontab(hour=3, minute=0, day_of_week=0),  # Sunday 3 AM UTC
+    },
+}

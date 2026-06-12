@@ -38,6 +38,11 @@ class BaseStorageService(ABC):
         """Read back a raw capture previously written by save_raw."""
         raise NotImplementedError
 
+    @abstractmethod
+    async def delete(self, path: str) -> bool:
+        """Delete a stored object; return True if it existed. Never raises."""
+        raise NotImplementedError
+
 
 class LocalStorageService(BaseStorageService):
     """Stores captures on the local filesystem (a Docker volume in deployment).
@@ -82,3 +87,17 @@ class LocalStorageService(BaseStorageService):
 
     async def get_raw(self, path: str) -> dict:
         return await asyncio.to_thread(self._read_json, Path(path))
+
+    def _delete(self, path: Path) -> bool:
+        try:
+            path.unlink()
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return False
+
+    async def delete(self, path: str) -> bool:
+        if not path:
+            return False
+        return await asyncio.to_thread(self._delete, Path(path))

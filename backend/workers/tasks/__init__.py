@@ -10,6 +10,7 @@ from backend.workers.celery_app import celery_app
 from backend.workers.tasks import scrape_task  # noqa: F401
 from backend.workers.tasks import parse_task  # noqa: F401
 from backend.workers.tasks import aggregate_task  # noqa: F401
+from backend.workers.tasks import scheduler_task  # noqa: F401
 
 
 @celery_app.task(name="backend.workers.tasks.ping")
