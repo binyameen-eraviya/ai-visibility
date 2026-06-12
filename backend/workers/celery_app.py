@@ -1,10 +1,30 @@
 import os
+from pathlib import Path
+from importlib import import_module
 
 from celery import Celery
 from celery.schedules import crontab
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _import_all_models() -> None:
+    """Import every migration module so all SQLAlchemy mappers are registered.
+
+    The worker/beat processes don't import the FastAPI routes, so without this a
+    cross-model relationship (e.g. Organization -> User) fails to configure on
+    the first query: "expression 'User' failed to locate a name". Mirrors
+    backend/alembic/env.py:import_all_migration_models.
+    """
+    migrations_dir = Path(__file__).resolve().parents[1] / "database" / "migrations"
+    for model_file in migrations_dir.glob("*.py"):
+        if model_file.name.startswith("_"):
+            continue
+        import_module(f"backend.database.migrations.{model_file.stem}")
+
+
+_import_all_models()
 
 # Inside Docker the broker host is the "redis" service; locally it falls back
 # to localhost (same pattern as backend/database/db.py for the db host).
