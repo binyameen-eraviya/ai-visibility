@@ -20,10 +20,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.utils.enums import ScrapeStatus
 from backend.database.models.scrape_run import ScrapeRun as ScrapeRunDB
 from backend.services.storage import BaseStorageService, LocalStorageService
+from backend.services.parser_service import parse_answer
+from backend.services.aggregator_service import aggregate_daily
 from backend.workers.pool.account_pool import AccountPool, NoAccountAvailable
 from backend.workers.scrapers.registry import get_adapter
 
 logger = logging.getLogger(__name__)
+
+
+async def _parse_and_aggregate(db: AsyncSession, run, project_id: uuid.UUID) -> None:
+    """Parse a successful run and roll its day's metrics up.
+
+    Synchronous here (Milestone 3); Milestone 4 moves this to Celery tasks.
+    Never raises -- a parse/aggregate failure must not fail the scrape itself.
+    """
+    try:
+        result = await parse_answer(run.id, db)
+        if result.skipped:
+            logger.info("scrape run %s: parse skipped (%s)", run.id, result.reason)
+            return
+        day = (run.scraped_at or datetime.now(timezone.utc)).date()
+        await aggregate_daily(db, project_id, day)
+    except Exception as e:
+        logger.warning("scrape run %s: parse/aggregate failed: %s", run.id, e)
 
 
 async def run_scrape(
@@ -103,6 +122,10 @@ async def run_scrape(
         logger.info("scrape run %s succeeded in %dms", run_id, duration_ms)
         if account:
             await pool.release(account.id)
+
+        # Milestone 3: parse the capture into structured analytics and roll up
+        # the day's metrics. Best-effort -- failures don't fail the scrape.
+        await _parse_and_aggregate(db, run, project_id)
         return run
     except Exception as e:
         duration_ms = int((time.monotonic() - started) * 1000)
